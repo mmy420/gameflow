@@ -1,0 +1,6 @@
+# PowerShell 脚本用 CRLF —— 目标是 Windows
+*.ps1   text eol=crlf
+*.psd1  text eol=crlf
+*.psm1  text eol=crlf
+*.md    text eol=lf
+*.json  text eol=lf

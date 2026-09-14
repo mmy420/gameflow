@@ -37,11 +37,28 @@
 
 **产出**：一份 `docs/preflight-findings.md`，把四条的实测结果与结论写下来。后续任何与之矛盾的 SPEC 断言，以这份为准。
 
-### 0.2 `Preflight.ps1`
+### 0.2 `Preflight.ps1` — **已写好，等你在 Windows 上跑**
 
-把 0.1 手工做的事固化成脚本，输出一份 JSON 快照，字段见 SPEC §9.11。
+`scripts\Preflight.ps1`。**只读**，不写任何文件（除非你给 `-OutFile`）。它把 0.1 里除 #2/#3 之外的全部探测都固化了，包括 #26 的最长内部路径测量。
 
-**完成判据**：跑一次，输出的 JSON 里**没有任何字段是 `unknown`**。
+```powershell
+cd D:\GameFlow
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Preflight.ps1 `
+    -HubRoot D:\GameHub `
+    -SampleGameDirs 'D:\你已解压的某个游戏','E:\另一个' `
+    -OutFile .\docs\preflight.json
+```
+
+- 用 `powershell.exe`（5.1）跑，不要用 `pwsh` —— **Codex 那一层就是 5.1**，这个脚本要先证明自己在 5.1 上能跑。
+- `-SampleGameDirs` 给不给都能跑，但**不给就测不到 §11 #26**，那条决定目录名降级会不会频繁触发。
+- 退出码：`0` = 无 FAIL，`3` = 有 FAIL（前置条件不满足）。
+
+**完成判据**：跑出来没有 FAIL；`preflight.json` 里 `archiver.sevenzip_path`、`hub.filesystem`、`codepage.acp`、`internal_paths.worst_E` 四个字段都有值。
+
+**#2 与 #3 这个脚本测不到**，必须在 Codex 会话里做（脚本末尾会把这两条打出来提醒）：
+
+- **#2**：Codex 里开 project = `D:\GameFlow`，配 `sandbox_workspace_write.writable_roots = ["D:\\GameHub"]`，让 agent 实际写一个文件
+- **#3**：`codex execpolicy check --rules <rules> -- powershell.exe -NoProfile -Command "& '7z.exe' t x.7z"`，看 `prefix_rule` 是整条匹配还是按子命令拆分
 
 ### 0.3 `scripts\lib\` 六个模块
 
