@@ -4,3 +4,6 @@
 *.psm1  text eol=crlf
 *.md    text eol=lf
 *.json  text eol=lf
+
+# fixture 是二进制样本，绝不可做行尾转换 —— 转了就不是同一个归档了
+tests/fixtures/** binary

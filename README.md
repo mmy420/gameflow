@@ -84,6 +84,9 @@ gameflow/
   SPEC.md        ← 详尽设计规格（§1–§12，42 条决策台账）
   PLAN.md        ← 实施计划：先做什么、怎么算做完
   docs/
+    WINDOWS-CHECK.md   ← **在 Windows 上怎么测**：一条命令，八项检测
+  scripts/lib/   六个地基模块（103 条用例全绿）
+  tests/         零依赖测试 harness + lint + fixture
 ```
 
 **`SPEC.md` 讲「是什么、为什么」，`PLAN.md` 讲「先做什么、怎么算做完」。** 准备动手就读 PLAN。
@@ -108,7 +111,14 @@ gameflow/
 
 ## 从哪开始
 
-**M0 是跑 `Preflight.ps1`，并把 §11 里最高优先级的几条实测掉。**
+**M0 = 在 Windows 上跑一次检测。** 一条命令，详见 [`docs/WINDOWS-CHECK.md`](docs/WINDOWS-CHECK.md)：
+
+```powershell
+git clone https://github.com/mmy420/gameflow.git D:\GameFlow
+cd D:\GameFlow
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\windows\Invoke-WindowsCheck.ps1 `
+    -SampleGameDirs 'D:\你已解压的某个游戏'
+```
 
 这不是仪式感。本 SPEC 在 macOS 上撰写，凡是 Windows 特有的行为都只能靠官方文档推断，
 标了 `【待测】` 的地方不实测就写不出正确的实现。其中几条会实质改变设计：
