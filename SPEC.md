@@ -56,10 +56,11 @@
   - [2.6 为什么 `_stg` 在库级而不在游戏目录下](#26-为什么-_stg-在库级而不在游戏目录下)
   - [2.7 `_inbox` 的存在理由与认领归位](#27-_inbox-的存在理由与认领归位)
   - [2.8 与 Git 的边界](#28-与-git-的边界)
+  - [2.9 枢纽与投递：为什么全程在一个卷上做完，最后才搬](#29-枢纽与投递为什么全程在一个卷上做完最后才搬)
 - [§3 数据模型：批次、状态、事件、清单、规则、密码库](#3-数据模型批次状态事件清单规则密码库)
   - [3.0 六类文件与它们的真相层级](#30-六类文件与它们的真相层级)
   - [3.1 JSON 与序列化硬规则](#31-json-与序列化硬规则)
-  - [3.2 批次清单 `D:\GameLib\batches\<batch-id>.json`](#32-批次清单-dgamelibbatchesbatch-idjson)
+  - [3.2 批次清单 `D:\GameHub\batches\<batch-id>.json`](#32-批次清单-dgamehubbatchesbatch-idjson)
   - [3.2A `dirname` 生成算法（全 SPEC 唯一权威）](#32a-dirname-生成算法全-spec-唯一权威)
   - [3.3 `games\<dirname>\.gameflow\events.jsonl`：唯一真相](#33-gamesdirnamegamefloweventsjsonl唯一真相)
   - [3.4 `games\<dirname>\.gameflow\state.json`：派生快照](#34-gamesdirnamegameflowstatejson派生快照)
@@ -262,7 +263,7 @@ I4 的实现形态是：**每个条目有自己的 `.gameflow\`（`events.jsonl`
 
 **B 的删除围栏**（2026-09-14 新增，取代原先的人工确认闸门）：
 
-> **I6** 执行体 B 的**任何删除操作**，目标路径必须位于**该批次的 `library_root` 之内**。判定方式：把目标路径与 `library_root` 都解析成**规范化全路径**（`GetFullPath` + 大小写不敏感比较），要求前者以后者加分隔符为前缀；**不跟随 reparse point / junction / symlink** 去解析（先拒绝含 reparse 的路径，再比前缀，§6.6）。不满足 → 不删、落 `BLOCKED_RESOURCE`、写事件。
+> **I6** 执行体 B 的**任何删除操作**，目标路径必须位于 **`hub_root` 之内**。**`destination_root` 永不进删除白名单**——投递后的游戏目录，B 没有任何删除权限（§2.9.2）。判定方式：把目标路径与 `hub_root` 都解析成**规范化全路径**（`GetFullPath` + 大小写不敏感比较），要求前者以后者加分隔符为前缀；**不跟随 reparse point / junction / symlink** 去解析（先拒绝含 reparse 的路径，再比前缀，§6.6）。不满足 → 不删、落 `BLOCKED_RESOURCE`、写事件。
 > 这条对**每一次** `Remove-Item` 生效，包括删源包、清 `_stg` 孤儿、清 `trash\` 过期项。**它是一条路径断言，不是一次人工确认**——断言每次都执行，人工确认只执行一次且会被疲劳性地点掉。
 
 > 为什么用围栏取代确认：源压缩包在解压成功后**本身没有保留价值**，真正的风险不是「删了压缩包」而是「删错了东西」。前者由 §6.8 的 D1–D12 十二条与条件挡住（那是正确性判据，不是礼貌性询问），后者由 I6 的路径围栏挡住。**一次覆盖整批的人工确认对这两类风险都不起作用**——它既不能验证 D1–D12，也不能发现路径算错了。用户 2026-09-14 裁定移除该闸门，理由与此一致（§12 `D-37`）。
@@ -404,7 +405,7 @@ C3（源包与本体同目录）+ C4（解压后自动删除源包）合起来�
 | N2 | **不做通用下载器。** 不实现下载引擎、不做断点续传、不管理下载队列 | 下载由用户既有的浏览器/网盘客户端完成，本项目只做**完成判定**（§5.3 的 G1–G6）与认领归位。写下载器等于把 E2 三类网盘的私有协议全逆一遍 |
 | N3 | **不做翻译质量保证。** 不评估、不校对、不比较机翻质量 | MTool 是注入式工具，产物落盘位置未知【社区】；完成判据只到「翻译已加载」（§7） |
 | N4 | **不做游戏启动器。** 不管理存档、不做游戏库前端、不记录游玩时长 | 流水线终点是 `COMPLETE`（可玩状态），之后与本项目无关 |
-| N5 | **不做跨机同步。** 不做云备份、不做多机状态合并 | 密码库是 DPAPI 加密、绑定运行身份，跨机原理上不可解密（「重装/换机 = 密码全丢」这条代价写在 §9）。且库根**不得**放在 OneDrive 同步目录下——有社区证据表明会导致 MTool inject 失败【社区】 |
+| N5 | **不做跨机同步。** 不做云备份、不做多机状态合并 | 密码库是 DPAPI 加密、绑定运行身份，跨机原理上不可解密（「重装/换机 = 密码全丢」这条代价写在 §9）。且枢纽根**不得**放在 OneDrive 同步目录下——有社区证据表明会导致 MTool inject 失败【社区】 |
 | N6 | **不做 GUI。** 所有呈现是 Markdown 报告（`_reports\<batch-id>-<seq>.md`，结构见 §5.9） | 「呈现层不吝啬」指的是报告要真正好读（分组、排序、异常项在最前、每条给出下一步动作），不是写一个窗口程序。Markdown 可 diff、可进聊天、可存档 |
 | N7 | **不做自适应 / 学习 / 加权评分。** 没有滚动阈值、没有 ML 判定、没有任何「历史**改变判定结果**」的机制 | 用户品味明确拒绝；且 1.2.5 的三问判别式在结构上就排除了这类机制 |
 | N7b | **唯一例外：密码候选的*尝试顺序*可按命中次数排序**（§3.7.4、§6.3.5）。它改变的是**先试谁**，不改变**试哪些**（候选集仍由 key 匹配决定）、也不改变**试几次**（上限仍是 `pw_vault_attempts`，默认 8 次探测） | 判别标准是 1.2.5 的三问：结果是否可能不同？否——同一候选集穷举完的结论完全一样，只是期望尝试次数更少。是否可解释？是——计数器可读、可 diff、可手动清零。是否可复现？是——给定同一份计数器，顺序唯一。**硬护栏：排序只在 key 匹配出的那个候选列表*内部*生效，绝不跨 key 借用高频密码**——那就是 §6.3 硬禁的字典爆破换了身外衣 |
@@ -442,11 +443,11 @@ C3（源包与本体同目录）+ C4（解压后自动删除源包）合起来�
 
 | # | 原断言（上游 / 起草契约） | 核实结果（可信度） | 本 SPEC 怎么写 | 章节 |
 |---|---|---|---|---|
-| **U1** | 「Codex 将下载目标定到 `games\<游戏名>\`」；「内置浏览器可下载到指定目录」 | **能力不存在。** 官方浏览器文档只给出「设置 > 浏览器」里的**全局**下载位置或「每次询问」；112 KB 官方配置参考里 `download_dir`/`download_path`/`downloads_dir` 类键 **0 命中**【官方 https://learn.chatgpt.com/zh-Hans/docs/browser + 本机 grep 实测】 | 全局下载目录固定为 **`D:\GameLib\_inbox`**（唯一落地目录），A 按批次清单**认领归位**到 `games\<dirname>\`。**C3 因此是终态保证，不是落地瞬间的保证** | §2 §5 §7 |
+| **U1** | 「Codex 将下载目标定到 `games\<游戏名>\`」；「内置浏览器可下载到指定目录」 | **能力不存在。** 官方浏览器文档只给出「设置 > 浏览器」里的**全局**下载位置或「每次询问」；112 KB 官方配置参考里 `download_dir`/`download_path`/`downloads_dir` 类键 **0 命中**【官方 https://learn.chatgpt.com/zh-Hans/docs/browser + 本机 grep 实测】 | 全局下载目录固定为 **`D:\GameHub\_inbox`**（唯一落地目录），A 按批次清单**认领归位**到 `games\<dirname>\`。**C3 因此是终态保证，不是落地瞬间的保证** | §2 §5 §7 |
 | **U2** | 用 `7z x -tzip` / `-trar` / `-t7z` **显式指定类型**来代替改后缀 | **会适得其反。** 给具体类型**关闭内容嗅探**；实测 `-tzip` 打一个内容是 7z 的 `fake.jpg` → exit 2 硬失败，不给 `-t` 反而正常打开【实测(macOS)，可外推】 | **永不传具体类型名。** 合法的 `-TypeSpec` 取值与各自的适用场合由 §6.2.1 唯一定义（含 `none` = 不传 `-t`，A 的只读预检与 G5 必须用它） | §6.2.1 |
 | **U3** | 改后缀是主流程的一步：`原文件 → 文件头/压缩测试 → 指定规则 → 临时副本改名 → 再次测试 → 解压` | **绝大多数情况不需要改名。** 7-Zip 默认 `-t*:r` + 前 8 MB 签名扫描；伪装扩展名、前置垃圾（≤8 MB）、图种、SFX 全部无需改名即可 `l/t/x`【官方 `type.htm` + 实测(macOS)】。**唯一硬例外是分卷**：伪装命名的分卷组 `7z t` exit 2 完全打不开，只改首卷也不行，必须整组补齐 `.NNN`；且 `.NNN` 之前的扩展名无所谓（`game.mp4.001` 正常工作）【实测(macOS)】 | 六步改名流程从主流程**降级为例外分支**，只处理分卷一种形态，且必须由批次条目显式声明。C7 因此被重新界定（见 1.3） | §6.5 |
 | **U4** | 目录名直接用游戏名 | **真实约束不是「非 ASCII」，而是「必须能在系统 ANSI 代码页内无损表示」**——老引擎（KiriKiri / NScripter / RM2000-VX）用 ANSI API 打开自己的资源，日文 Windows 上日文路径完全正常【社区；本 SPEC 据此定案】 | 完整规范化链 + **一道 ACP 可表示性 strict 往返检查**：能无损往返就用规范化标题（保住可读性），不能就降级 ASCII slug，真实标题写进 `manifest.json`，降级原因必须记录。**算法本体（逐字映射表、裁剪长度、哈希位数、往返用的 API）只在 §3.2A 有一份，本节不复述** | §3.2A |
-| **U5** | staging = `games\<游戏名>\.gameflow\staging\<attempt-id>` | **吃掉 39 字符路径预算**，配合日文长名 + 多重嵌套会真的撞破；建目录实际上限是 **248**（MAX_PATH − 12），不是 260【算术 + 官方 MAX_PATH 语义】 | 改用**库级短中转区** `D:\GameLib\_stg\<8hex>\`（25 字符，布局与路径预算见 §2），**必须与游戏库同卷**。这不违反 C3——C3 约束的是源包的**终态**位置，中转区解完即清空。附带收益：Defender 排除项简化成一个固定目录 | §2 §6 |
+| **U5** | staging = `games\<游戏名>\.gameflow\staging\<attempt-id>` | **吃掉 39 字符路径预算**，配合日文长名 + 多重嵌套会真的撞破；建目录实际上限是 **248**（MAX_PATH − 12），不是 260【算术 + 官方 MAX_PATH 语义】 | 改用**库级短中转区** `D:\GameHub\_stg\<8hex>\`（25 字符，布局与路径预算见 §2），**必须与游戏库同卷**。这不违反 C3——C3 约束的是源包的**终态**位置，中转区解完即清空。附带收益：Defender 排除项简化成一个固定目录 | §2 §6 |
 | **U6** | 阶段一是**一个**后台阶段 | **阶段一内部必须再切一刀。** S4U 官方明写不存密码、访问不了加密文件 → 解不开 DPAPI vault；`MpCmdRun` 官方明写需提权 → 与受限计划任务冲突【两条均为官方，逐字引文与 URL 见 1.2.2】 | 切成 **A（巡检，无人值守）** + **B（作业，人触发）**。A + B = C1 的阶段一，并定义了「阶段一需要人工做的一部分」= 四项（§12 `D-14`） | §2 §5 §6 |
 | **U7** | 阶段一由 Codex 桌面 App 的 Scheduled tasks 调度 | **依赖面过大且与品味冲突。** Codex 计划任务要求「机器开机 + 桌面 App 常驻 + 项目目录在盘上 + 沙盒能写到库目录」【官方】；Windows 任务计划只要求用户登录着。用一个 LLM turn 去驱动一个纯确定性文件处理器，是把确定性逻辑塞进不确定载体 | 阶段一调度用 **Windows 任务计划**（`MultipleInstances = IgnoreNew`，不用 S4U）。Codex 侧只保留 **5 个固定操作做成 skills**，其配置形态与目录由 §8 定义 | §8 §2 · `D-10` |
 | **U8** | `Watch-Downloads.ps1` 常驻监测下载 | **不可行。** Windows 上 `features.unified_exec` 默认关闭（官方逐字 "enabled by default except on Windows"）；Computer Use 在 Windows 上独占前台、无法与用户共用会话（「锁屏继续」是 macOS 专属）【官方】；叠加 E1 | A 必须**无状态、可重跑、扫一遍就退出**，由外部调度器反复调用。脚本清单里没有 `Watch-*.ps1` | §5 §2 |
@@ -476,14 +477,15 @@ C3（源包与本体同目录）+ C4（解压后自动删除源包）合起来�
 | 一组游戏的云盘分享链接 | `items[].cloud_links[].url` | 每个游戏可以有多个（主源 + 镜像），用 `role` 区分 |
 | 每个链接的网盘提取码 | vault 的 `link:` 键 → `cloud_links[].code_ref` | **提取码永不内联进批次文件**（§3.2） |
 | 每个游戏的解压密码 | vault 的 `site:` / `title:` / `item:` 键 → `password_ref` | 同一上传者多个等价密码 → 一个 key 下多个候选（§3.7.2） |
-| 目标库根 | `library_root` | 必须是已登记库根之一；**批内统一**（§2.4.3 LR2） |
+| 枢纽根 | `hub_root` | 固定，必须是已登记之一；下载与解压全在这里（§2.9） |
+| 游戏最终去处 | `destination_root` + `group` | **自由填绝对路径，可在任意盘**，也可留 `null` 之后用 `gf-deliver` 再定（§2.9.4） |
 | 每个游戏的目录名 | `items[].title` → 由 §3.2A 推导出 `dirname` | 你只给标题，目录名算法自己推（带 ACP 可表示性检查） |
 | 压缩包可能的后缀名 | `items[].extraction` | **绝大多数情况留空即可**——7-Zip 按内容嗅探（U2）。只有**分卷伪装**（一组文件要补回 `.001/.002/.003`）才必须显式声明 |
 | 「已登录各网盘」 | 不是字段，是前置条件 | 见 §7.0 与各 netdisk profile 的 `needs_login` |
 
 #### 1.7.2 你做什么（两分钟，每批一次）
 
-1. 把网盘客户端的下载目录设成 `<library_root>\_inbox`（**只设一次**，不是每个游戏一次）。
+1. 把网盘客户端的下载目录设成 `<hub_root>\_inbox`（**只设一次**，不是每个游戏一次）。
 2. 把本批次的游戏一次性转存 + 排进下载队列。
 3. 走开。
 
@@ -497,6 +499,11 @@ A（计划任务，每 10 分钟一轮，Interactive / Limited）
 B（计划任务或手动触发，Interactive / Highest —— 同一入口，文件锁互斥）
    密码链 P0 → 密码库（按 §3.7.4 的命中次数排序，≤8 次探测）→ 7z t → 7z x 到 _stg
    → 递归解包 → 逐条目校验 → Defender 预检 → 落地 → D1–D12 + I6 围栏 → 删源包
+                          ↓
+投递（B）：此时枢纽里那个目录只剩游戏本体
+   整目录移动到 <destination_root>\<group>\<dirname>\（.gameflow\ 跟着走）
+   同卷 = rename，跨卷 = 复制+删源。destination_root 为 null 则停在
+   WAITING_FOR_DESTINATION，等你 gf-deliver -To <路径>
 ```
 
 **中途不需要你介入。** A 与 B 都可以挂成计划任务（同一用户的 `Interactive` 登录类型，DPAPI 可解；B 另加 `-RunLevel Highest` 给 `MpCmdRun`，见 §8.8.10）。删除**不设人工确认闸门**——安全性由 §6.8 的 D1–D12 与 I6 的路径围栏保证，两者都是逐次执行的机器断言（§12 `D-37`）。你只在**全批跑完后**看一次报告。
@@ -550,7 +557,7 @@ B（计划任务或手动触发，Interactive / Highest —— 同一入口，�
 | **输入（只读）** | `batches\<batch-id>.json`；`_inbox\` 的目录项与文件元数据；`_inbox\claims.json`（人手写的认领补充映射，§5.2.2 M3）；`games\<dirname>\` 的文件元数据；`games\<dirname>\.gameflow\events.jsonl`；`rules\netdisk-profiles.json`、`rules\source-profiles.json`、`rules\container-types.json` |
 | **输出（写）** | ① `games\<dirname>\.gameflow\events.jsonl`（**只追加**）② `games\<dirname>\.gameflow\state.json`（由 events 重建覆盖）③ `games\<dirname>\.gameflow\manifest.json` 的来源/文件快照字段 ④ `_reports\<batch-id>-<seq>.md`（**只新建，不覆盖既有报告**） |
 | **副作用** | 唯一的破坏性文件操作是**认领归位**：把 `_inbox\<file>` **移动**到 `games\<dirname>\<file>`（同卷 rename，不是复制，不是删除）。除此之外 A 不改动任何已存在文件的字节。 |
-| **前置条件** | `7z.exe` 在 PATH 且版本 ≥ 25.01（§9 Preflight 核验）；`D:\GameLib` 存在且各子目录可写；`_inbox`、`_stg`、`games` 同卷；批次 JSON 可解析。**不要求** vault 可解、**不要求**提权。 |
+| **前置条件** | `7z.exe` 在 PATH 且版本 ≥ 25.01（§9 Preflight 核验）；`D:\GameHub` 存在且各子目录可写；`_inbox`、`_stg`、`games` 同卷；批次 JSON 可解析。**不要求** vault 可解、**不要求**提权。 |
 | **失败姿态** | **永不阻塞、永不删除、永不猜。** ① 抢**批次锁** `batches\<batch-id>.lock` 失败 → 运行期状况 `LOCKED_BY_ANOTHER_RUN`，**不落盘、不进状态机**（§4.6.4），直接退出等下一周期；抢不到某个**条目锁** `games\<dirname>\.gameflow\.lock` → 只跳过该条目，其余继续。② 单条目异常 → 该条目落对应停机态，其余条目继续推进（不变量 **I4**）。③ 无法认领的 `_inbox` 文件 → 原地不动，进报告的「未认领」清单。④ 整体异常 → 按 §8.2.3 的退出码退出 + Windows 事件日志一条，等下周期重来。 |
 | **可并发** | **与自身不可并发**（`MultipleInstances = IgnoreNew`【官方】 <https://learn.microsoft.com/en-us/powershell/module/scheduledtasks/register-scheduledtask> ＋ 两层文件锁双保险）。**与 B 不可并发**（都写 `.gameflow\`；真正的互斥靠**条目锁**，两者必须抢同一个句柄，§4.6.1）。**与 C 的下载/浏览阶段可并发**；与 C 的状态写入阶段争条目锁，A 让路。 |
 
@@ -562,7 +569,7 @@ B（计划任务或手动触发，Interactive / Highest —— 同一入口，�
 |---|---|
 | **输入（只读）** | `games\<dirname>\.gameflow\state.json`（条目必须已在 `PREFLIGHT_OK`）；源包本体；`%LOCALAPPDATA%\GameFlow\vault.clixml`（DPAPI）；`rules\` 下的 `container-types.json`、`source-profiles.json`、`engine-rules.json`、`sevenzip-warnings.json`、`defender-stdout.json`、`threat-allowlist.json` |
 | **输出（写）** | ① `_stg\<8hex>\` 的解压产物（临时；分卷重建副本落**同级**的 `_stg\<8hex>-p\`，§6.5）② `games\<dirname>\` 的游戏本体 ③ `events.jsonl` 追加 ④ `manifest.json`（源包 SHA-256、逐条目对账结果、引擎判定、`stage1_snapshot`）⑤ `state.json` ⑥ `rules\threat-allowlist.json` 的追加（**唯一由脚本写的规则文件**，且只在人工放行后，§6.9） |
-| **副作用** | ① **删除源包**——B 是三个执行体中**唯一**有删除权的，由 §6.8 的 D1–D12 判据 gate 住；小于 `retention.trash_max_bytes` 的源包先移入 `games\<dirname>\.gameflow\trash\`，`retention.trash_days` 后再由 B 清理（两段式删除的完整语义与默认值见 §3 与 §6.8，**该默认值仍待用户拍板，见 §12**）② `Add-MpPreference -ExclusionPath D:\GameLib\_stg\`（一次性、显式、写日志、附 `Remove-MpPreference` 回滚）③ 调用 `MpCmdRun -Scan -DisableRemediation`（提权）④ 进程命令行上短暂出现明文密码（`-p` 是 7-Zip 唯一可用的密码通道，同机进程可见，不可消除，见 §9） |
+| **副作用** | ① **删除源包**——B 是三个执行体中**唯一**有删除权的，由 §6.8 的 D1–D12 判据 gate 住；小于 `retention.trash_max_bytes` 的源包先移入 `games\<dirname>\.gameflow\trash\`，`retention.trash_days` 后再由 B 清理（两段式删除的完整语义与默认值见 §3 与 §6.8，**该默认值仍待用户拍板，见 §12**）② `Add-MpPreference -ExclusionPath D:\GameHub\_stg\`（一次性、显式、写日志、附 `Remove-MpPreference` 回滚）③ 调用 `MpCmdRun -Scan -DisableRemediation`（提权）④ 进程命令行上短暂出现明文密码（`-p` 是 7-Zip 唯一可用的密码通道，同机进程可见，不可消除，见 §9） |
 | **前置条件** | ① 会话**已提权**（UAC 在会话启动时确认一次，不是每条命令一次）② vault 的创建身份 == 当前运行身份（否则 DPAPI 解不开）③ `_stg` 与 `games` **同卷** ④ 磁盘余量过 §6.12 的空间护栏 ⑤ 目标路径长度已过 §2.5 的预算闸门 |
 | **失败姿态** | **任一判据不满足 = 保留所有源包 + 落具名停机态**（不变量 **I1**）。密码尝试失败 → **清空 `_stg\<8hex>\`**（理由见 §6.3）。B 崩溃 → 留下孤儿 `_stg\<8hex>\`，由下一次 B 启动时按「attempt-id 不在任何 `state.json` 里」清理（§4.5.3）。**绝不**在失败后改写或删除原包。 |
 | **可并发** | **与自身、与 A、与 C 均不可并发。** 同一条目同一时刻只允许一个写状态的执行体实例持有条目锁。抢锁失败 → 干净报错退出，让人重试（B 是人触发的，有人看着，不需要像 A 那样静默重排）。 |
@@ -584,17 +591,17 @@ B（计划任务或手动触发，Interactive / Highest —— 同一入口，�
 |---|---|---|---|---|
 | `D:\GameFlow\scripts\`、`lib\` | R | R | R | 代码，运行期只读 |
 | `D:\GameFlow\rules\*.json` | R | R | R | 规则，**只有人改**；两个例外：`threat-allowlist.json` 由 B 在人工放行后追加（§6.9），`mtool-profiles\<item-id>.json` 由 C 在人工确认后写死 |
-| `D:\GameLib\batches\<id>.json` | R | R | R | 由 `New-Batch.ps1` 生成，运行期只读 |
-| `D:\GameLib\batches\<id>.lock` | **RW** | **RW** | – | 批次锁（§4.6.1） |
-| `D:\GameLib\_inbox\` | **R + 移出** | – | 间接写（浏览器落地） | A 是唯一的搬运工；`claims.json` 人写、A 只读 |
-| `D:\GameLib\_stg\<8hex>\`、`…-p\` | – | **RW + 清空** | – | B 独占；A 只在报告里列孤儿 |
-| `D:\GameLib\games\<dirname>\`（本体） | **W**（归位）| **RW + 删源包** | R + MTool 注入 | |
+| `D:\GameHub\batches\<id>.json` | R | R | R | 由 `New-Batch.ps1` 生成，运行期只读 |
+| `D:\GameHub\batches\<id>.lock` | **RW** | **RW** | – | 批次锁（§4.6.1） |
+| `D:\GameHub\_inbox\` | **R + 移出** | – | 间接写（浏览器落地） | A 是唯一的搬运工；`claims.json` 人写、A 只读 |
+| `D:\GameHub\_stg\<8hex>\`、`…-p\` | – | **RW + 清空** | – | B 独占；A 只在报告里列孤儿 |
+| `D:\GameHub\games\<dirname>\`（本体） | **W**（归位）| **RW + 删源包** | R + MTool 注入 | |
 | `…\.gameflow\events.jsonl` | **A**ppend | **A**ppend | **A**ppend | 唯一真相（**I2**） |
 | `…\.gameflow\state.json` | **W** | **W** | **W** | 派生快照，可删可重建 |
 | `…\.gameflow\manifest.json` | W（部分字段） | **W** | – | |
 | `…\.gameflow\.lock` | **RW** | **RW** | **RW** | 条目锁 = 真正的并发单位（**I4**） |
 | `…\.gameflow\trash\` | – | **RW** | – | 两段式删除的暂存区（§6.8） |
-| `D:\GameLib\_reports\` | **W**（新建） | – | – | |
+| `D:\GameHub\_reports\` | **W**（新建） | – | – | |
 | `%LOCALAPPDATA%\GameFlow\vault.clixml` | – | R | **RW** | A 永远碰不到 |
 
 ---
@@ -609,7 +616,7 @@ B（计划任务或手动触发，Interactive / Highest —— 同一入口，�
         │  浏览器或网盘客户端把字节写进那个**全局的**下载目录（见 2.7）
         ▼
    ╔══════════════════════════════════════════════════════════════════════════════╗
-   ║  D:\GameLib\_inbox\                                                          ║
+   ║  D:\GameHub\_inbox\                                                          ║
    ║   写者：Codex 内置浏览器 / 网盘桌面客户端（不受我们控制）                        ║
    ║   读者：A（唯一）      A 只往外搬，从不往里放                                   ║
    ╚══════┬═══════════════════════════════════════════════════════════════════════╝
@@ -754,11 +761,11 @@ D:\GameFlow\                        # 代码与规则，进 Git
   tests\fixtures\
   .agents\skills\                   # Codex 的 5 个固定操作
   AGENTS.md
-  gameflow.config.json              # 本机配置：已登记库根集合（§2.4.3）。进 Git 但
+  gameflow.config.json              # 本机配置：已登记枢纽根集合（§2.4.3）。进 Git 但
                                     #   每台机器的值不同 —— 视为机器级配置，改它要走 §12
 
-D:\GameLib\                         # 已登记库根之一。根名压到 10 字符是 MAX_PATH 预算需要
-                                    #   下面这整棵子树在**每个**库根里各有一份
+D:\GameHub\                         # 已登记枢纽根之一。根名压到 10 字符是 MAX_PATH 预算需要
+                                    #   下面这整棵子树在**每个**枢纽根里各有一份
   _inbox\                           # 唯一下载落地目录
     claims.json                     # 人手写的认领补充映射，A 只读（§5.2.2 M3）
   _stg\<8hex>\                      # 库级短中转区，必须与游戏库同卷；产物直接落这里
@@ -779,16 +786,16 @@ D:\GameLib\                         # 已登记库根之一。根名压到 10 �
 %LOCALAPPDATA%\GameFlow\vault.clixml   # DPAPI 密码库，绑定运行身份，不在库内、不在 Git 内
 ```
 
-> 测试库根由 `-Profile test` 从配置解析（§8.2.3），**不从命令行接收路径**；它必须与生产库根**等长**（10 字符），否则 2.5 的预算表在测试环境里不等价，测出来的闸门触发频率没有意义。
+> 测试枢纽根由 `-Profile test` 从配置解析（§8.2.3），**不从命令行接收路径**；它必须与生产枢纽根**等长**（10 字符），否则 2.5 的预算表在测试环境里不等价，测出来的闸门触发频率没有意义。
 
-#### 2.4.0 「库根」到底指什么
+#### 2.4.0 「枢纽根」到底指什么
 
-一句话：**库根是整棵数据树的顶，压缩包和游戏本体都在它下面，只是在不同阶段位于不同子目录。**
+一句话：**枢纽根是整棵数据树的顶，压缩包和游戏本体都在它下面，只是在不同阶段位于不同子目录。**
 
-同一个压缩包在一次批次里会经过三个位置，**全部在库根之内**（这正是 I6 那条删除围栏能成立的前提）：
+同一个压缩包在一次批次里会经过三个位置，**全部在枢纽根之内**（这正是 I6 那条删除围栏能成立的前提）：
 
 ```
-<library_root>\                         ← 库根，登记在 gameflow.config.json
+<hub_root>\                         ← 枢纽根，登记在 gameflow.config.json
   _inbox\<游戏A.part1.rar>               ① 下载刚落地（客户端下载目录指向这里）
   <group>\<游戏A>\<游戏A.part1.rar>       ② A 认领归位后，源包与游戏本体同目录（C3）
   <group>\<游戏A>\Game.exe               ③ B 解压后，游戏本体就在源包旁边
@@ -798,7 +805,7 @@ D:\GameLib\                         # 已登记库根之一。根名压到 10 �
 代入你的实际布局：
 
 ```
-library_root = E:\wen\games\hgames
+hub_root = E:\wen\games\hgames
 group        = 202609
 
 E:\wen\games\hgames\_inbox\             ← 网盘客户端的下载目录设成这里（只设一次）
@@ -808,17 +815,17 @@ E:\wen\games\hgames\batches\            ← 批次清单
 E:\wen\games\hgames\_reports\           ← 对账报告
 ```
 
-所以「库根」**既不是"压缩包的位置"也不是"游戏的位置"，而是两者共同的祖先**。这个设计不是为了整齐：
+所以「枢纽根」**既不是"压缩包的位置"也不是"游戏的位置"，而是两者共同的祖先**。这个设计不是为了整齐：
 
-- **I6 的删除围栏**靠它——「删除目标必须在 `library_root` 之内」是一条能机器验证的断言，前提是所有会被删的东西都在同一棵树下
+- **I6 的删除围栏**靠它——「删除目标必须在 `hub_root` 之内」是一条能机器验证的断言，前提是所有会被删的东西都在同一棵树下
 - **同卷约束**靠它——`_inbox` → `<group>\<游戏>` 的认领归位是同卷 rename（O(1)），`_stg` → `<group>\<游戏>` 的落地移动不会退化成「复制+删除」
-- **Defender 排除项**靠它——只排 `<library_root>\_stg`，一条
+- **Defender 排除项**靠它——只排 `<hub_root>\_stg`，一条
 
 #### 2.4.1 逐目录的存在理由
 
 | 路径 | 为什么它必须单独存在 |
 |---|---|
-| `D:\GameFlow\` 与 `D:\GameLib\` 分离 | 代码进版本控制、数据不进（2.8）；沙盒后果见 2.8.4 |
+| `D:\GameFlow\` 与 `D:\GameHub\` 分离 | 代码进版本控制、数据不进（2.8）；沙盒后果见 2.8.4 |
 | `.agents\skills\` | Codex 的 5 个固定操作。**`.codex\` 不是 skills 目录**——它是本地环境配置，actions 跑在集成终端而非 agent 沙盒，权限模型不同【官方】 |
 | `scripts\lib\` | A/B 共用同一套落盘协议、锁、编码约定、7z 调用封装（§6.2.1 / §8）。两份实现迟早会漂移，漂移点恰好是删除判据。 |
 | `rules\` 与 `scripts\` 分离 | 规则是**人改的静态声明**，脚本是执行器。用户品味明确要求「规则显式声明、阈值写死可调」——把 `container-types.json` 塞进代码里就意味着改规则要改代码。唯一的写例外是 `threat-allowlist.json`（B 在人工放行后追加），它因此也是 Git 里第一个要人工复核的文件。 |
@@ -830,31 +837,31 @@ E:\wen\games\hgames\_reports\           ← 对账报告
 | `.gameflow\` 里的三件套 + `trash\` | `events.jsonl` 是唯一真相（**I2**），`state.json` 是随时可删可重建的派生物，`manifest.json` 是给人和给下游用的静态快照。三者分离的价值在崩溃恢复：只要 `events.jsonl` 完整，另外两个都能重算。`trash\` 与它们放在一起，是因为两段式删除的暂存必须与它的账本同卷、同生命周期（§6.8）。 |
 | vault **不在库内** | ① 库不进 Git 但会被用户备份/搬盘，密码库跟着走是净风险 ② DPAPI 绑定**运行身份**，跟着文件搬到别的机器也解不开，放在 `%LOCALAPPDATA%` 才符合它的语义 ③ A 根本没有读它的需要，物理隔离比约定更可靠 |
 
-#### 2.4.2 为什么库根叫 `D:\GameLib` 而不是 `D:\GameLibrary`
+#### 2.4.2 为什么枢纽根叫 `D:\GameHub` 而不是 `D:\GameLibrary`
 
-先把账算清楚，别夸大：`D:\GameLibrary\games\` = 21 字符，`D:\GameLib\games\` = 17 字符，**省了 4 个字符，就这么多**。它不是这套预算里最重要的一步（最重要的是 2.6 的 `_stg` 搬家，省 96 字符；其次是目录名降级，省 46 字符），但它入选有三条理由：
+先把账算清楚，别夸大：`D:\GameLibrary\games\` = 21 字符，`D:\GameHub\games\` = 17 字符，**省了 4 个字符，就这么多**。它不是这套预算里最重要的一步（最重要的是 2.6 的 `_stg` 搬家，省 96 字符；其次是目录名降级，省 46 字符），但它入选有三条理由：
 
 1. **它是白拿的。** 换个目录名的成本是零，而在最紧的那一档（日文长标题、`dirname` 顶到 60 字符）上，可用内部路径从 158 涨到 162——2.5% 的余量，代价为零的东西没有理由不拿。
-2. **它把库根压进了「≤20 字符」的调研建议线内**【调研 windows-download §6.3】，而且压得很宽裕（10 字符），给未来加一级子目录留了口子。
-3. **它没有短到伤可读性。** 调研原文建议的 `D:\GL` 再省 5 个字符，但这个名字要出现在资源管理器地址栏、对账报告、Defender 排除项确认、以及用户三个月后回来找「那个游戏库在哪」的时刻。**`GameLib` 是「够短且仍然自解释」的那个点。**
+2. **它把枢纽根压进了「≤20 字符」的调研建议线内**【调研 windows-download §6.3】，而且压得很宽裕（10 字符），给未来加一级子目录留了口子。
+3. **它没有短到伤可读性。** 调研原文建议的 `D:\GH` 再省 5 个字符，但这个名字要出现在资源管理器地址栏、对账报告、Defender 排除项确认、以及用户三个月后回来找「那个枢纽在哪」的时刻。**`GameHub` 是「够短且仍然自解释」的那个点。**
 
-> 库根是**配置项**，不是硬编码，硬约束只有两条：① 长度 ≤ 20 字符 ② 与 `_stg` 同卷，由 Preflight 核验。**但库根不得放在 OneDrive 同步目录或 `Program Files` 下**——前者有社区证据导致 MTool inject 失败【社区】，后者写不进 `version.dll`【社区】。
+> 枢纽根是**配置项**，不是硬编码，硬约束只有两条：① 长度 ≤ 20 字符 ② 与 `_stg` 同卷，由 Preflight 核验。**但枢纽根不得放在 OneDrive 同步目录或 `Program Files` 下**——前者有社区证据导致 MTool inject 失败【社区】，后者写不进 `version.dll`【社区】。
 
 ---
 
-#### 2.4.3 多库根：允许多个，但一个批次只能落在一个里
+#### 2.4.3 多枢纽根：允许多个，但一个批次只能落在一个里
 
-用户可以登记多个库根（例如按盘、按题材分）。`gameflow.config.json`：
+用户可以登记多个枢纽根（例如按盘、按题材分）。`gameflow.config.json`：
 
 ```json
 {
   "schema_version": 1,
-  "library_roots": [
-    { "id": "main", "path": "D:\\GameLib", "_note": "默认" },
+  "hub_roots": [
+    { "id": "main", "path": "D:\\GameHub", "_note": "默认" },
     { "id": "adv",  "path": "E:\\GameAdv" },
     { "id": "test", "path": "D:\\GameTst", "test_only": true }
   ],
-  "default_library_root": "main"
+  "default_hub_root": "main"
 }
 ```
 
@@ -862,12 +869,12 @@ E:\wen\games\hgames\_reports\           ← 对账报告
 
 | # | 规则 | 为什么 |
 |---|---|---|
-| **LR1** | 批次的 `library_root` 必须**精确匹配**（大小写不敏感）已登记集合里的某个 `path`。不做路径规范化后的等价判断（不解析 `..`、不跟随 junction、不补全 8.3 短名） | 「看起来等价」的两个路径在 NTFS 上可能不是同一个目录。宁可要求逐字相同，也不要一个会在 junction 上出错的智能匹配 |
-| **LR2** | **一个批次只能落在一个库根里。** 要跨库根就拆成两个批次 | `_stg` 必须与游戏库**同卷**（`File.Replace` 跨卷抛异常，§8.8），而 `_stg` 是库根下的目录。批内混用库根 = 批内混用卷 = 落地移动随机退化成「复制+删除」并可能中途失败 |
-| **LR3** | **每个库根各有一份完整子树**（`_inbox` / `_stg` / `_reports` / `batches` / `games`）。它们之间没有任何共享状态 | 共享 `_inbox` 会让认领归位变成跨卷移动（见 LR2）。共享 `batches` 会让批次锁的作用域含糊 |
-| **LR4** | **每个库根都要独立满足**：MAX_PATH 预算（§2.5，根名长度直接进预算表）、同卷约束、Defender 排除项（`<root>\_stg` 各排一条）、NTFS（§9 的 MOTW 逻辑） | 这四条是按库根算的，不是按机器算的。`Preflight.ps1` 必须**逐个库根**核验并分别报告（§9.11） |
+| **LR1** | 批次的 `hub_root` 必须**精确匹配**（大小写不敏感）已登记集合里的某个 `path`。不做路径规范化后的等价判断（不解析 `..`、不跟随 junction、不补全 8.3 短名） | 「看起来等价」的两个路径在 NTFS 上可能不是同一个目录。宁可要求逐字相同，也不要一个会在 junction 上出错的智能匹配 |
+| **LR2** | **一个批次只能落在一个枢纽根里。** 要跨枢纽根就拆成两个批次 | `_stg` 必须与游戏库**同卷**（`File.Replace` 跨卷抛异常，§8.8），而 `_stg` 是枢纽根下的目录。批内混用枢纽根 = 批内混用卷 = 落地移动随机退化成「复制+删除」并可能中途失败 |
+| **LR3** | **每个枢纽根各有一份完整子树**（`_inbox` / `_stg` / `_reports` / `batches` / `games`）。它们之间没有任何共享状态 | 共享 `_inbox` 会让认领归位变成跨卷移动（见 LR2）。共享 `batches` 会让批次锁的作用域含糊 |
+| **LR4** | **每个枢纽根都要独立满足**：MAX_PATH 预算（§2.5，根名长度直接进预算表）、同卷约束、Defender 排除项（`<root>\_stg` 各排一条）、NTFS（§9 的 MOTW 逻辑） | 这四条是按枢纽根算的，不是按机器算的。`Preflight.ps1` 必须**逐个枢纽根**核验并分别报告（§9.11） |
 
-> `library_roots[].path` 的根名长度**不要求相同**，但每个都必须自己通过 §2.5 的预算闸门。根名长一个字符，那个库根留给游戏内部路径的余量就少一个字符——`E:\GameAdv`（10 字符）与 `D:\GameLib`（10 字符）等价，而 `E:\MyGameLibrary`（16 字符）会让该库根的降级触发得更频繁。
+> `hub_roots[].path` 的根名长度**不要求相同**，但每个都必须自己通过 §2.5 的预算闸门。根名长一个字符，那个枢纽根留给游戏内部路径的余量就少一个字符——`E:\GameAdv`（10 字符）与 `D:\GameHub`（10 字符）等价，而 `E:\MyGameLibrary`（16 字符）会让该枢纽根的降级触发得更频繁。
 
 ### 2.5 MAX_PATH 预算实算
 
@@ -894,38 +901,38 @@ E:\wen\games\hgames\_reports\           ← 对账报告
 
 以下全部是纯字符计数，与操作系统无关，macOS 上算的和 Windows 上算的一模一样【实测·算术，可外推到 Windows】。
 
-游戏落地路径的通式是 **`<library_root>\<group>\<dirname>\`**。`group` 是批次字段（§3.2），默认 `games`；它存在的理由见 §2.5.3a。
+游戏落地路径的通式是 **`<hub_root>\<group>\<dirname>\`**。`group` 是批次字段（§3.2），默认 `games`；它存在的理由见 §2.5.3a。
 
 | 片段 | 字面 | 字符数 | 累计 |
 |---|---|---|---|
-| 库根 | `D:\GameLib` | 10 | 10 |
-| ＋ `<group>\`（默认 `games\`） | `D:\GameLib\games\` | +7 | **17** |
+| 枢纽根 | `D:\GameHub` | 10 | 10 |
+| ＋ `<group>\`（默认 `games\`） | `D:\GameHub\games\` | +7 | **17** |
 | ＋ 游戏目录名 `<dirname>` | 变长 `N` | +N | 17+N |
 | ＋ 分隔符 | `\` | +1 | **18+N** |
 | ＋ `.gameflow\` | `…\<dirname>\.gameflow\` | +10 | 28+N |
-| 中转区（**绝对路径，与 dirname 无关**） | `D:\GameLib\_stg\<8hex>\` | — | **25** |
-| 中转区·分卷重建副本 | `D:\GameLib\_stg\<8hex>-p\` | — | **27** |
-| 落地目录（`_inbox`） | `D:\GameLib\_inbox\` | — | 18 |
+| 中转区（**绝对路径，与 dirname 无关**） | `D:\GameHub\_stg\<8hex>\` | — | **25** |
+| 中转区·分卷重建副本 | `D:\GameHub\_stg\<8hex>-p\` | — | **27** |
+| 落地目录（`_inbox`） | `D:\GameHub\_inbox\` | — | 18 |
 
 #### 2.5.3a `group`：按月 / 按题材分组，以及它吃掉多少预算
 
 实际使用中人会想按月或按题材归档，例如 **`E:\wen\games\hgames\202609\<游戏名>\`**。这由批次字段 `group` 表达：
 
 ```
-library_root = E:\wen\games\hgames      # 登记在 gameflow.config.json（§2.4.3）
+hub_root = E:\wen\games\hgames      # 登记在 gameflow.config.json（§2.4.3）
 group        = 202609                     # 批次字段，默认 "games"
 落地路径      = E:\wen\games\hgames\202609\<dirname>\
 ```
 
-**`_inbox\` / `_stg\` / `_reports\` / `batches\` 仍然在库根下、不随 group 分裂**。这是有意的：一个 `_inbox` 意味着客户端下载目录只设一次；一个 `_stg` 意味着 Defender 只排一条例外、孤儿回收只扫一个地方。group 只影响**游戏落在哪**。
+**`_inbox\` / `_stg\` / `_reports\` / `batches\` 仍然在枢纽根下、不随 group 分裂**。这是有意的：一个 `_inbox` 意味着客户端下载目录只设一次；一个 `_stg` 意味着 Defender 只排一条例外、孤儿回收只扫一个地方。group 只影响**游戏落在哪**。
 
-**保留名**：`group` 不得以 `_` 开头，也不得等于 `batches`——否则会与库根下的固定目录撞名。`New-Batch.ps1` 校验，不合法直接退出码 2。
+**保留名**：`group` 不得以 `_` 开头，也不得等于 `batches`——否则会与枢纽根下的固定目录撞名。`New-Batch.ps1` 校验，不合法直接退出码 2。
 
 **它吃掉的预算是实打实的**，两种布局对比：
 
 | 布局 | 落地前缀 | 前缀字符数 | 可用内部路径 `E` |
 |---|---|---|---|
-| 设计基准 | `D:\GameLib\games\` | 17 | `E ≤ 222 − N` |
+| 设计基准 | `D:\GameHub\games\` | 17 | `E ≤ 222 − N` |
 | 按月分组（上例） | `E:\wen\games\hgames\202609\` | **27** | **`E ≤ 212 − N`** |
 
 差 10 个字符。代入 §2.5.4 的三档 `dirname`：
@@ -936,9 +943,9 @@ group        = 202609                     # 批次字段，默认 "games"
 | 典型日文长度 | 24 | 198 | **188** |
 | ASCII slug 降级 | 14 | 208 | **198** |
 
-**结论：这个布局可用，但降级会触发得更频繁。** 想把余量要回来，按收益从大到小：① 库根改短（`E:\wen\hg` 比 `E:\wen\games\hgames` 省 12 个字符，比动别的都管用）；② `group` 用 `2609` 而不是 `202609`（省 2）；③ 调低 `dirname` 的裁剪上限（省得最少，代价是可读性）。
+**结论：这个布局可用，但降级会触发得更频繁。** 想把余量要回来，按收益从大到小：① 枢纽根改短（`E:\wen\hg` 比 `E:\wen\games\hgames` 省 12 个字符，比动别的都管用）；② `group` 用 `2609` 而不是 `202609`（省 2）；③ 调低 `dirname` 的裁剪上限（省得最少，代价是可读性）。
 
-> **这也让 §11 #26 从「可选」升级为「该早点测」**：真实游戏包的最长内部条目路径到底是多少，直接决定这 10 个字符要不要紧。若 `E` 中位数在 80 左右，按月分组毫无压力；若在 180 左右，那就得认真选库根名字。
+> **这也让 §11 #26 从「可选」升级为「该早点测」**：真实游戏包的最长内部条目路径到底是多少，直接决定这 10 个字符要不要紧。若 `E` 中位数在 80 左右，按月分组毫无压力；若在 180 左右，那就得认真选枢纽根名字。
 
 #### 2.5.4 两条通道的余量
 
@@ -963,7 +970,7 @@ group        = 202609                     # 批次字段，默认 "games"
 
 - **C-PATH-1**：路径长度预检必须按**落地路径**算（`18+N+E`），不能按 staging 路径算。staging 反而是最宽松的那一条（215，即使是 `-p` 副本也有 213，**都宽于通道二在最好情况下的 208**），拿它做闸门等于没做。产物直接落 `_stg\<8hex>\`、不再有工作树子目录，这两个数才成立。
 - **C-PATH-2**：`E > 222 − N` 时，第一动作是**把 `dirname` 降级成 ASCII slug**（这是 §3.2A 已经规定的降级触发条件之一，本节只是给出它的算术判据），降级把 `N` 从最坏 60 压到 14，多出 46 字符。降级原因必须记录，真实标题写进 `manifest.json`。
-- **C-PATH-3**：降级后仍 `E > 208` → 落停机态 **`PATH_BUDGET_EXCEEDED`**（§4.3）。它与 `WAITING_FOR_RULE` 分开是因为人工动作不同：这里要人**改配置**（换更短的库根 / 人工指定更短的目录名），而不是**补一条规则**。
+- **C-PATH-3**：降级后仍 `E > 208` → 落停机态 **`PATH_BUDGET_EXCEEDED`**（§4.3）。它与 `WAITING_FOR_RULE` 分开是因为人工动作不同：这里要人**改配置**（换更短的枢纽根 / 人工指定更短的目录名），而不是**补一条规则**。
 
 #### 2.5.5 游戏内部路径能有多长
 
@@ -993,13 +1000,13 @@ group        = 202609                     # 批次字段，默认 "games"
 **⇒ 结论**：`_stg` 搬到库级之后，最坏组合还有 36 字符余量；不搬，同一个包在解压过程中就会撞墙。**这不是理论风险，是把已知的结构长度加起来就得到的数。**
 
 > **【待测 · §11】** 真实 RPG Maker MV / Unity 游戏包的**实测最长内部条目路径**（用 `7z l -slt` 取 `Path` 字段的最大长度，三五个真实包即可）。
-> **不实测会怎样**：`E ≤ 222 − N` 这条闸门的**触发频率完全未知**。如果真实素材的 `E` 中位数是 80，闸门几乎永不触发，降级机制形同虚设也无所谓；如果中位数是 180，那么**多数日文长标题游戏都会被强制降级成 ASCII slug**，用户会看到一库的 `g0042-a1b2c3d4` 而不是游戏名——那属于设计失败，需要重新考虑库根是不是该压到 `D:\GL`。这个数字直接决定用户体验，必须实测。
+> **不实测会怎样**：`E ≤ 222 − N` 这条闸门的**触发频率完全未知**。如果真实素材的 `E` 中位数是 80，闸门几乎永不触发，降级机制形同虚设也无所谓；如果中位数是 180，那么**多数日文长标题游戏都会被强制降级成 ASCII slug**，用户会看到一库的 `g0042-a1b2c3d4` 而不是游戏名——那属于设计失败，需要重新考虑枢纽根是不是该压到 `D:\GH`。这个数字直接决定用户体验，必须实测。
 
 ---
 
 ### 2.6 为什么 `_stg` 在库级而不在游戏目录下
 
-上游设计是 `games\<dirname>\.gameflow\staging\<attempt-id>\`；本 SPEC 改成 `D:\GameLib\_stg\<8hex>\`。三条独立理由，任何一条单独成立都足够。
+上游设计是 `games\<dirname>\.gameflow\staging\<attempt-id>\`；本 SPEC 改成 `D:\GameHub\_stg\<8hex>\`。三条独立理由，任何一条单独成立都足够。
 
 **理由一 · 路径预算：省 96 字符。** 上游那一段是 `.gameflow\`(10) + `staging\`(8) + `<attempt-id>\`(21) = **39 字符**：
 
@@ -1016,14 +1023,14 @@ group        = 202609                     # 批次字段，默认 "games"
 
 | | 游戏目录下的 staging | 库级 `_stg` |
 |---|---|---|
-| 排除项写法与数量 | `D:\GameLib\games\*\.gameflow\staging\`，**依赖通配语义**（`*` 能否跨/只跨一层，本轮无一手证据【待测 · §11】）；退化方案是每游戏 1 条、随库线性增长，且通配项的 `-CheckExclusion` 结果对未来新建的目录不具代表性 | `D:\GameLib\_stg\`，不依赖通配，**恒定 1 条**，`MpCmdRun -CheckExclusion -Path D:\GameLib\_stg\` 一次说清【官方】 |
+| 排除项写法与数量 | `D:\GameHub\games\*\.gameflow\staging\`，**依赖通配语义**（`*` 能否跨/只跨一层，本轮无一手证据【待测 · §11】）；退化方案是每游戏 1 条、随库线性增长，且通配项的 `-CheckExclusion` 结果对未来新建的目录不具代表性 | `D:\GameHub\_stg\`，不依赖通配，**恒定 1 条**，`MpCmdRun -CheckExclusion -Path D:\GameHub\_stg\` 一次说清【官方】 |
 | 回滚与安全面 | 通配项误删风险高，且可能意外覆盖 `games\` 下别的东西 | 一条 `Remove-MpPreference`；**精确到一个只存在几分钟的临时目录** |
 
 注意这条排除**不会削弱预检**：`MpCmdRun -Scan -DisableRemediation` 官方明写会**忽略排除目录**【官方】——所以「排除 `_stg` 让解压不被打断」和「移入 `games\` 前对 `_stg` 做一次显式全量扫描」这两件事可以同时成立，**这正是整套组合的支点，也是 2.2 第 4 条线（Defender 必须早于落地）的理由**。`games\` 本身**绝不排除**，实时保护完整保留。三级处置的细节归 §6.9 / §9.8。
 
 **理由三 · `File.Replace` 跨卷抛异常，所以必须同卷。**
 
-官方原文：「The backup file, replaced file, and replacement file **must all reside on the same volume**」【官方】 <https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-replacefilew>；.NET 侧同约束 <https://learn.microsoft.com/en-us/dotnet/api/system.io.file.replace>。本项目的落盘协议（写 tmp → `Flush($true)` → `File.Replace(tmp, dst, dst.bak)`，**保留 backup 仅作诊断**，见 §8）因此强制要求 `.gameflow\` 与它的 tmp 同卷；`_stg\<8hex>\` → `games\<dirname>\` 的移动也必须同卷，否则会退化成「跨卷复制 + 删除」——耗时按 GB 计、失败中间态多一倍、删除那一步一旦失败就留下双份数据。把 `_stg` 钉在库根下，**同卷性变成结构保证而不是运维约定**：Preflight 对 `D:\GameLib` 做一次 `Get-Volume` 就同时覆盖 `_inbox`、`_stg`、`games`、`batches`、`_reports` 五个目录；staging 若分散在每个游戏目录下，这个假设**会随时间悄悄失效**。
+官方原文：「The backup file, replaced file, and replacement file **must all reside on the same volume**」【官方】 <https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-replacefilew>；.NET 侧同约束 <https://learn.microsoft.com/en-us/dotnet/api/system.io.file.replace>。本项目的落盘协议（写 tmp → `Flush($true)` → `File.Replace(tmp, dst, dst.bak)`，**保留 backup 仅作诊断**，见 §8）因此强制要求 `.gameflow\` 与它的 tmp 同卷；`_stg\<8hex>\` → `games\<dirname>\` 的移动也必须同卷，否则会退化成「跨卷复制 + 删除」——耗时按 GB 计、失败中间态多一倍、删除那一步一旦失败就留下双份数据。把 `_stg` 钉在枢纽根下，**同卷性变成结构保证而不是运维约定**：Preflight 对 `D:\GameHub` 做一次 `Get-Volume` 就同时覆盖 `_inbox`、`_stg`、`games`、`batches`、`_reports` 五个目录；staging 若分散在每个游戏目录下，这个假设**会随时间悄悄失效**。
 
 > `_stg\<8hex>\` 的 `<8hex>` 就是 attempt-id（格式见 §4.4.3）。B 崩溃留下的孤儿目录，判据是「这个 8hex 不出现在任何 `games\*\.gameflow\state.json` 里」——确定性判据，不做时间猜测、不做「超过 N 小时就算陈旧」。
 
@@ -1037,7 +1044,7 @@ group        = 202609                     # 批次字段，默认 "games"
 
 官方 `docs/browser`（zh-Hans）原文：「浏览器下载的文件默认保存在系统的『下载』文件夹中。在**设置 > 浏览器**中，您可以选择其他下载位置、将下载位置恢复为系统默认位置，或开启**询问下载文件的保存位置**。」【官方】 <https://learn.chatgpt.com/zh-Hans/docs/browser> 在 112 KB 的官方全量配置键参考里搜下载目录相关键，**零命中**（`download_dir` / `download_path` / `downloads_dir` 全部 0）；所有 `download` 相关的键都是 `allow | deny` 权限开关，不是路径【实测·对官方文档全文做的 grep，与运行平台无关，可完全外推】。
 
-⇒ 实际能力是：**一个全局的、在 GUI 里设的、对所有任务共享的下载目录**，或者「每次下载都弹框问存哪」（那就不是自动了）。三条可行替代里只有一条是后台友好的：**把全局下载目录固定到 `D:\GameLib\_inbox`，让执行体 A 按批次清单把文件归位。** 另外两条（每次弹保存框由 C 手打路径 / 走网盘桌面客户端）都把落地这件事拽回前台，与 E1 冲突。
+⇒ 实际能力是：**一个全局的、在 GUI 里设的、对所有任务共享的下载目录**，或者「每次下载都弹框问存哪」（那就不是自动了）。三条可行替代里只有一条是后台友好的：**把全局下载目录固定到 `D:\GameHub\_inbox`，让执行体 A 按批次清单把文件归位。** 另外两条（每次弹保存框由 C 手打路径 / 走网盘桌面客户端）都把落地这件事拽回前台，与 E1 冲突。
 
 #### 2.7.2 认领归位（概念，细节在 §5.2）
 
@@ -1074,11 +1081,11 @@ _inbox\  ──►  ① 稳定性判定（G1..G6，就地做，绝不移动还�
 
 #### 2.8.1 两棵树
 
-| | `D:\GameFlow\`（脚本、共享模块、规则 JSON、批次模板、fixture、`AGENTS.md`、`.agents\skills\`） | `D:\GameLib\`（游戏本体、源包、状态、日志、报告、批次实例） |
+| | `D:\GameFlow\`（脚本、共享模块、规则 JSON、批次模板、fixture、`AGENTS.md`、`.agents\skills\`） | `D:\GameHub\`（游戏本体、源包、状态、日志、报告、批次实例） |
 |---|---|---|
 | 进 Git | **是**——这些是**可重建的意图**，要 diff、要回滚、要在两台机器之间同步 | **否**——体积按几十 GB 计；`events.jsonl` 高频追加；内容是二进制；且真实游戏标题本身是隐私 |
 
-**`D:\GameLib` 不得作为 Git 工作区**——不是「不建议」，是不得。一次误 `git add .` 就会把几十 GB 二进制塞进 `.git`，而且 `games\<dirname>\` 里的目录名就是游戏标题。
+**`D:\GameHub` 不得作为 Git 工作区**——不是「不建议」，是不得。一次误 `git add .` 就会把几十 GB 二进制塞进 `.git`，而且 `games\<dirname>\` 里的目录名就是游戏标题。
 
 #### 2.8.2 `.gameflow\` 的禁列表
 
@@ -1095,8 +1102,67 @@ _inbox\  ──►  ① 稳定性判定（G1..G6，就地做，绝不移动还�
 
 #### 2.8.4 与 Codex 沙盒的交叉
 
-`D:\GameFlow` 是 Codex 的 project root，`D:\GameLib` 在 project 之外 → 必须配 `sandbox_workspace_write.writable_roots`，否则 B 的第一次写文件就失败【官方：键存在于 config-reference；**实际边界属 §11 待测**】。官方另有一条：`<writable_root>/.codex` 在作为目录存在时会被**递归置为只读**【官方 config-reference】——我们的状态目录叫 `.gameflow`，正好不撞。这条不是巧合，是选名字时就避开的。
+`D:\GameFlow` 是 Codex 的 project root，`D:\GameHub` 在 project 之外 → 必须配 `sandbox_workspace_write.writable_roots`，否则 B 的第一次写文件就失败【官方：键存在于 config-reference；**实际边界属 §11 待测**】。官方另有一条：`<writable_root>/.codex` 在作为目录存在时会被**递归置为只读**【官方 config-reference】——我们的状态目录叫 `.gameflow`，正好不撞。这条不是巧合，是选名字时就避开的。
 
+
+### 2.9 枢纽与投递：为什么全程在一个卷上做完，最后才搬
+
+**这一节取代了「游戏直接解压到目标路径」的做法**（用户 2026-09-14 裁定，§12 `D-40`）。
+
+#### 2.9.1 两个根
+
+```
+枢纽根 hub_root（固定，一次性登记在 gameflow.config.json）
+  D:\GameHub\
+    _inbox\                     下载落地（网盘客户端的下载目录指向这里，只设一次）
+    _stg\<8hex>\                解压中转
+    games\<dirname>\            认领归位 → 源包在这；解压产物也落这（**C3 在此成立**）
+      .gameflow\                 状态与日志，跟着游戏走
+    _trash\<batch-id>\          两段式删除暂存
+    batches\  _reports\
+
+目标根 destination_root（每批指定，可为 null，可在任意盘）
+  E:\wen\games\hgames\202609\<dirname>\     投递后的最终位置
+```
+
+#### 2.9.2 为什么不直接解压到目标
+
+把解压放在枢纽、最后整体搬走，换来四件事：
+
+| 收益 | 说明 |
+|---|---|
+| **同卷恒成立** | `_inbox → games` 的认领归位、`_stg → games` 的落地，永远是同卷 rename（O(1)）。`File.Replace` 跨卷抛异常这条约束**自动满足**，不再取决于你这次把游戏放哪 |
+| **Defender 排除项只有一条** | `<hub_root>\_stg`。若解压发生在目标卷，每开一个新目标就要加一条排除项，越积越多 |
+| **MAX_PATH 预算是固定值** | 解压期的路径前缀恒为 `D:\GameHub\games\<dirname>\`，可以算死。目标路径多长都不影响解压能否成功——**只影响投递能否成功**，而那时已经知道内部最长路径是多少了（`7z l -slt` 早就量过） |
+| **目标目录只接收成品** | 投递发生在**源包已删除之后**，所以目标目录里从第一刻起就只有游戏本体。它也**永远不在 I6 的删除白名单里** |
+
+#### 2.9.3 C3 保住了
+
+用户最初的约束 C3 是「原始压缩包应与游戏本体在同一文件夹」。枢纽模型下**它仍然成立**——在 `<hub_root>\games\<dirname>\` 里，源包和解压产物确实同目录。**分离发生在删包之后**：D1–D12 通过 → 删源包 → 此时目录里只剩游戏 → 再投递。
+
+所以「压缩包位置与游戏位置分离」与 C3 不冲突，它们描述的是**不同时刻**。
+
+#### 2.9.4 投递（delivery）
+
+投递是一次**整目录移动**，是流水线的最后一步：
+
+```
+<hub_root>\games\<dirname>\        ──move──▶   <destination_root>\<group>\<dirname>\
+   （含 .gameflow\，状态跟着走）
+```
+
+- **同卷**（目标与枢纽同盘）→ rename，O(1)
+- **跨卷** → 复制 + 删除源，**时间与游戏体积成正比**。这是枢纽模型唯一的实打实代价，几十 GB 的游戏要等
+- `.gameflow\` 随目录一起搬（用户选择「状态跟着游戏走」），搬完在 `state.json` 里记下新的绝对路径
+- **投递失败时不删源**：目标已存在同名目录、空间不足、路径超限 → 落 `BLOCKED_RESOURCE` 或 `PATH_BUDGET_EXCEEDED`，枢纽里那份原封不动
+
+**`destination_root` 可以为 `null`**：此时条目停在 `WAITING_FOR_DESTINATION`（§4.3），游戏就待在枢纽里，你之后用 `gf-deliver` 指定路径再搬。这样你**不必在建批次时就决定放哪**——可以先看看解出来是什么再定。
+
+#### 2.9.5 枢纽的空间要求
+
+枢纽卷必须同时容得下：**源压缩包 + 解压产物 + `_stg` 中转**。最坏情况约为「最大单个游戏体积 × 2 + 该批压缩包总量」。投递到别的卷之后枢纽才回收空间。
+
+> 若枢纽卷紧张，可以把 `destination_root` 设成**与枢纽同卷**的路径——那样投递是 rename，不额外占空间，只是失去了「游戏放别的盘」这个能力。
 
 ---
 
@@ -1183,7 +1249,7 @@ _inbox\  ──►  ① 稳定性判定（G1..G6，就地做，绝不移动还�
 
 ---
 
-### 3.2 批次清单 `D:\GameLib\batches\<batch-id>.json`
+### 3.2 批次清单 `D:\GameHub\batches\<batch-id>.json`
 
 #### 3.2.1 `batch_id` 与 `item.id` 格式规范（全 SPEC 唯一定义）
 
@@ -1234,8 +1300,8 @@ item.id 正则：^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$          长度 1..32
   "batch_id": "2026-09-12-vn-a",
   "created_at": "2026-09-12T03:11:07.4210000Z",   // J3：字符串，自己格式化
   "created_by": "human",                           // human | codex
-  "library_root": "D:\\GameLib",
-  "group": "games",                                // 落地 = <library_root>\<group>\<dirname>\（§2.5.3a）                   // 与本机配置不符时 A/B 拒绝处理整个批次
+  "hub_root": "D:\\GameHub",
+  "group": "games",                                // 落地 = <hub_root>\<group>\<dirname>\（§2.5.3a）                   // 与本机配置不符时 A/B 拒绝处理整个批次
   "_note": "本批 3 个条目，来自同一资源站的三个上传者",
 
   // ── defaults：按 §3.2.4 的规则继承给每个 item ──────────────────
@@ -1355,9 +1421,10 @@ Merge(defaults, item) -> effective_item:
 | `batch_id` | string | ✅ | §3.2.1 正则；必须等于文件名去 `.json` |
 | `created_at` | string | ✅ | ISO 8601 `o` 格式，UTC |
 | `created_by` | string | ✅ | `human` \| `codex` |
+| `destination_root` | string \| null | ✅ | 投递目标根，**可为 `null`**（此时停 `WAITING_FOR_DESTINATION`，之后用 `gf-deliver` 指定）。**自由填写绝对路径，不要求预先登记**；`New-Batch.ps1` 只校验：卷存在且为 NTFS、可写、不在 OneDrive / `Program Files` 下、MAX_PATH 预算过关，并在报告开头**回显一次**。写错最多是解到意外位置——它**永不进 I6 的删除白名单**，不会丢数据（§2.9） |
 | `download_mode` | string | ✅ | `manual`（默认）\| `computer_use`。谁来完成「转存 + 开始下载」，见 §7.0。可被 `items[].download_mode` 逐条目覆盖 |
-| `group` | string | ✅ | 游戏落地的分组段：`<library_root>\<group>\<dirname>\`。**默认 `"games"`**；按月/按题材归档时填 `"202609"` 这类。**不得以 `_` 开头、不得等于 `batches`**（与库根下的固定目录撞名），不得含路径分隔符。它计入 MAX_PATH 预算，见 §2.5.3a |
-| `library_root` | string | ✅ | 绝对路径，**必须是本机 `gameflow.config.json` 已登记库根之一**（精确匹配，大小写不敏感，不做路径规范化后的等价判断）；不在集合里时 A/B **拒绝处理整个批次**并在报告里报错。**一个批次只能落在一个库根里**（批内统一），跨库根请拆成两个批次 |
+| `group` | string | ✅ | 游戏落地的分组段：`<hub_root>\<group>\<dirname>\`。**默认 `"games"`**；按月/按题材归档时填 `"202609"` 这类。**不得以 `_` 开头、不得等于 `batches`**（与枢纽根下的固定目录撞名），不得含路径分隔符。它计入 MAX_PATH 预算，见 §2.5.3a |
+| `hub_root` | string | ✅ | 绝对路径，**必须是本机 `gameflow.config.json` 已登记枢纽根之一**（精确匹配，大小写不敏感，不做路径规范化后的等价判断）；不在集合里时 A/B **拒绝处理整个批次**并在报告里报错。**一个批次只能落在一个枢纽根里**（批内统一），跨枢纽根请拆成两个批次 |
 | `defaults` | object | ✅ | 可以是 `{}`，但键必须存在 |
 | `items` | array | ✅ | 长度 ≥ 1；`id` 在数组内唯一 |
 | `_note` | string \| string[] | ❌ | |
@@ -1497,7 +1564,7 @@ try {
 
 #### 3.2A.4 第三步：MAX_PATH 预算 · 第四步：库内去重 · 降级 slug
 
-**第三步（预算）**：断言 `17 + len(dirname) + 1 + budget_e ≤ 248`（`D:\GameLib\games\` = 17 字符；建目录的实际上限是 **248 = MAX_PATH − 12**，不是 260；`budget_e` 与整条算术见 §2.5）。不满足 → `reason = "path_budget"`，走降级。降级后仍不满足 → 落停机态 **`PATH_BUDGET_EXCEEDED`**（§4.3），人工动作是换更短的库根或人工指定更短的 `dirname`；人工指定的名字仍要过 N2/N3/N5/N6 的合法性校验，但跳过 N7/N8 的自动裁剪，`reason` 仍记 `path_budget`。
+**第三步（预算）**：断言 `17 + len(dirname) + 1 + budget_e ≤ 248`（`D:\GameHub\games\` = 17 字符；建目录的实际上限是 **248 = MAX_PATH − 12**，不是 260；`budget_e` 与整条算术见 §2.5）。不满足 → `reason = "path_budget"`，走降级。降级后仍不满足 → 落停机态 **`PATH_BUDGET_EXCEEDED`**（§4.3），人工动作是换更短的枢纽根或人工指定更短的 `dirname`；人工指定的名字仍要过 N2/N3/N5/N6 的合法性校验，但跳过 N7/N8 的自动裁剪，`reason` 仍记 `path_budget`。
 
 **第四步（去重）**：库内 `dirname` 的唯一性判据是 **`ToUpperInvariant()` 后的 Ordinal 相等**（NTFS 默认大小写不敏感，`ネコぱら` 与 `ネコパラ` 是不同名字、`Game` 与 `game` 是同一个）。N8 与降级 slug 都用这一条比较；降级 slug 再撞 → `New-Batch.ps1` 报错退出，**不自动改名**。
 
@@ -1568,7 +1635,7 @@ tail    := ASCII 化结果（把 N1 输出里的 [A-Za-z0-9] 段保留、其余�
 |---|---|---|---|---|---|
 | `run.started` | A / B / C | 一次脚本执行开始 | `script`,`args_digest`,`script_version` | ❌ | ❌ |
 | `run.ended` | A / B / C | 一次脚本执行正常结束 | `exit_code`,`items_touched` | ❌ | ❌ |
-| `item.registered` | A | 首次为该条目建目录并落 `.gameflow` | `dirname`,`library_root` | ❌ | ❌ |
+| `item.registered` | A | 首次为该条目建目录并落 `.gameflow` | `dirname`,`hub_root` | ❌ | ❌ |
 | `env.snapshot` | A / B | 记录本次运行的环境上下文 | `acp`,`beta_utf8`,`sevenzip_version`,`long_paths`,`fs_type`,`ps_version`,`mtool_build` | ❌ | ❌ |
 | `download.claimed` | A | 从 `_inbox` 认领一个文件归位到 `games\<dirname>\` | `file`,`bytes`,`from`,`matched_by` | ❌ | ✅ |
 | `download.gate` | A | 一次 `DOWNLOAD_STABLE` 六重判据采样 | `g1`..`g6`（各 `true`/`false`/`"skipped"`）,`sample_index`,`file`,`reason_code` | ❌ | ✅ |
@@ -1736,7 +1803,7 @@ Rebuild(itemDir) -> state:
   "extract": {
     "depth_reached": 2,                   // 口径：成功解开一个白名单容器 = +1（Split 外壳也算）
     "max_depth_effective": 5,
-    "staging": "_stg\\7c2ea1b4",          // 相对 D:\GameLib\；解完清空
+    "staging": "_stg\\7c2ea1b4",          // 相对 D:\GameHub\；解完清空
     "attempts": [
       { "attempt_id": "20260912T041640Z-7c2e", "depth": 1, "archive": "ネコぱら.mp4.001",
         "exit": 0, "files_reported": 214, "entries_listed": 214, "warnings": [],
@@ -1817,7 +1884,7 @@ Rebuild(itemDir) -> state:
 | `promoted[]` | array | fold 自 `staging.promoted` |
 | `manifest_sha256` | string \| null | 写 manifest 的幂等判据；与重算值一致则跳过重写 |
 | `extract.depth_reached` | int | 口径：**成功解开一个白名单容器 = +1**（**分卷 Split 外壳同样计层，无例外**），不是「调了几次 7z」 |
-| `extract.staging` | string \| null | `_stg\<8hex>`，相对 `D:\GameLib\`。**布局里没有 `w\` 子目录**；分卷重建副本落**同级**的 `_stg\<8hex>-p\`（§6.4） |
+| `extract.staging` | string \| null | `_stg\<8hex>`，相对 `D:\GameHub\`。**布局里没有 `w\` 子目录**；分卷重建副本落**同级**的 `_stg\<8hex>-p\`（§6.4） |
 | `extract.attempts[]` | array | 每层一条，含 exit / `Files: N` / `l -slt` 条目数 / warnings |
 | `defender` | object \| null | fold 自 `defender.scanned`；`verdict` ∈ `clean`\|`A`\|`B`\|`C` |
 | `engine` | object \| null | §7.6 判定结果；`game_root` 是**相对路径**（字段名不是 `game_root_rel`）；`UNKNOWN` 不等于不支持翻译 |
@@ -1843,7 +1910,7 @@ Rebuild(itemDir) -> state:
 | `consumed_by` | string \| null | 消费它的 `attempt_id` |
 | `deleted_at` | string \| null | 非 null 即已删（字段名不是 `deleted`） |
 
-> **`archives[]` 永远不引入 `path` 字段。** 删除源包时必须 `Join-Path <该 item 的游戏根> a.name` 现拼，§6.8.3 照此实现。理由：自拼绝对路径会让删除动作读的字段与落盘 gate 读的字段不是同一个，直接破坏 I3；而且库根一旦搬迁，落盘的绝对路径会指向别的机器上的目录。
+> **`archives[]` 永远不引入 `path` 字段。** 删除源包时必须 `Join-Path <该 item 的游戏根> a.name` 现拼，§6.8.3 照此实现。理由：自拼绝对路径会让删除动作读的字段与落盘 gate 读的字段不是同一个，直接破坏 I3；而且枢纽根一旦搬迁，落盘的绝对路径会指向别的机器上的目录。
 
 **`attempt_id` 格式** = `<UTC 紧凑 ISO>-<4hex>`，例 `20260912T041640Z-7c2e`。**不用 ULID**——`_stg\<8hex>` 的目录名与 attempt 的映射靠这个形状维持，换成 ULID 就对不上了（§6.1.2 照此实现）。
 
@@ -2443,11 +2510,11 @@ Recover(itemDir, actor):
 `File.Replace` 在源与目标**位于不同卷时直接抛异常**【官方 https://learn.microsoft.com/en-us/dotnet/api/system.io.file.replace 】；Win32 侧同样要求备份、被替换、替换三个文件**全部同卷**【官方】。由此两条硬性布局约束（与 §2.4 一致，Preflight 的 PF-05 会拦）：
 
 1. `.gameflow\` 必须与游戏库同卷——它本来就在 `games\<dirname>\` 下，自动满足；**但 `.tmp-*` 必须写在目标文件的同一个目录**，不能图省事写到 `%TEMP%`。
-2. 库级中转区 `_stg\<8hex>\` **必须与游戏库同卷**：跨卷会让 staging→落地退化成「复制 + 删除」，代价与风险都上升，而 D12（移动成功且体积一致）会变成昂贵得多的检查。同卷也是 §6.12.5 余量公式成立的前提（staging 与落地占的是同一块空间，**不需要**预留两倍）。
+2. 枢纽级中转区 `_stg\<8hex>\` **必须与游戏库同卷**：跨卷会让 staging→落地退化成「复制 + 删除」，代价与风险都上升，而 D12（移动成功且体积一致）会变成昂贵得多的检查。同卷也是 §6.12.5 余量公式成立的前提（staging 与落地占的是同一块空间，**不需要**预留两倍）。
 
 #### 3.9.5 路径长度断言
 
-每次建目录 / 建文件前，断言完整路径长度未超预算（§2.5 的实算表：`D:\GameLib\games\` = 17 字符，建目录实际上限 **248 = MAX_PATH − 12**，不是 260）。超限时的处置**不是等 API 报错**，而是：建批次阶段 → 触发 §3.2A 第三步的 `dirname` 降级；降级后仍超限 → 落停机态 **`PATH_BUDGET_EXCEEDED`**（§4.3）。
+每次建目录 / 建文件前，断言完整路径长度未超预算（§2.5 的实算表：`D:\GameHub\games\` = 17 字符，建目录实际上限 **248 = MAX_PATH − 12**，不是 260）。超限时的处置**不是等 API 报错**，而是：建批次阶段 → 触发 §3.2A 第三步的 `dirname` 降级；降级后仍超限 → 落停机态 **`PATH_BUDGET_EXCEEDED`**（§4.3）。
 
 `env.long_paths` 只作为**上下文记录**，**不作为放宽预算的依据**——【待测】→ §11：`LongPathsEnabled=1` 时 `powershell.exe`/`pwsh.exe` 对 >260 路径的实际行为。不实测就只能按「从源头压短路径」走，这也是本 SPEC 的默认取舍。
 
@@ -2479,7 +2546,7 @@ Recover(itemDir, actor):
 
 - **P-1 状态只由事件推进。** `events.jsonl` 是唯一真相（I2）；`state.json` 是 fold 的结果，任何时刻可删可重建。**重建过程绝不读文件系统**——一旦重建时去"看一眼盘上现在是什么样"，幂等就没了（I3）。
 - **P-2 停机态是一等公民，不是异常。** 每个停机态都必须在进入的那一刻，把「解除后回到哪」写死进事件（`resume_allowed`），而不是等解除时再推断。人和脚本读同一个字段。
-- **P-3 停机不删文件（I1）。** 唯一例外是库级中转区 `D:\GameLib\_stg\<8hex>\` 下的内容——它是可重造的中间物，不是用户数据。删除动作必须带 `_stg\` 前缀断言，见 §4.5.3。
+- **P-3 停机不删文件（I1）。** 唯一例外是枢纽级中转区 `D:\GameHub\_stg\<8hex>\` 下的内容——它是可重造的中间物，不是用户数据。删除动作必须带 `_stg\` 前缀断言，见 §4.5.3。
 
 ---
 
@@ -2557,12 +2624,21 @@ Recover(itemDir, actor):
                       ║       ▼       └──────────╥───────────┘
                       ║  ┌──────────────────────┐║ M14 〔C〕人确认翻译已加载
                       ║  │TRANSLATION_NOT_      ││
-                      ║  │  APPLICABLE       ◆  ││
-                      ║  └──────────────────────┘│
-                      ▼                          ▼
+                      ║  │  APPLICABLE          ││
+                      ║  └──────────╥───────────┘│
+                      ▼             ▼            ▼
+                  ┌───────────────────────────────────┐
+                  │            DELIVERING             │ H31 ─▶ WAITING_FOR_DESTINATION ◀╌ R17
+                  │ 〔B〕整目录移动到 destination_root   │        （destination_root 为 null）
+                  │  同卷=rename / 跨卷=复制+删源       │
+                  └─────────────────╥─────────────────┘
+                                    ║ M15 移动成功 ∧ 目标体积==源 ∧ 新绝对路径已落盘
+                                    ▼
                   ┌───────────────────────────────────┐
                   │            COMPLETE  ◆            │
                   └───────────────────────────────────┘
+
+  WAITING_FOR_DESTINATION ──R17──▶ DELIVERING   （人跑 gf-deliver -To <路径>，见 §2.9.4）
 
   任一非终态 ──H25──▶  ABANDONED ◆      （只由人显式声明，见 §4.8）
   任一停机态 ──R15──▶  ABANDONED ◆      （唯一例外：JOURNAL_CORRUPT，见 §4.3.17）
@@ -2605,9 +2681,11 @@ Recover(itemDir, actor):
 | M09 | `EXTRACTED` → `SCANNED` | 三条**全部**成立：① 源包删除账已平——每个 `consumed_by` 非空的包都有删除事实且 `result ∈ {deleted, already_absent, retained}` ② 整树 `Unblock-File` 完毕 ③ `manifest.stage1_snapshot` 已写 | B | `Unblock-File` 官方明文幂等、对未标记文件无副作用【官方】；**MOTW 不得作为安全边界**；本步不再做任何威胁裁决（已在 M08 之前完成） |
 | M10 | `SCANNED` → `READY_FOR_TRANSLATION` | 批次条目 `translation.mode != none` | B | 引擎判定事实已落盘；`engine.game_root` 指向含引擎标记文件的那一层，**不假定等于 `games\<dirname>\`**（判定表见 §7.6） |
 | M11 | `SCANNED` → `COMPLETE` | 批次条目 `translation.mode == none` | B | 同 M10 的 manifest 完整性要求 |
+| M15 | `DELIVERING` → `COMPLETE` | 整目录移动成功，目标体积与源一致，`state.json` 已记下新绝对路径 | B | 同卷 = rename（O(1)）；跨卷 = 复制+删除源，耗时与体积成正比。**失败不删源**，枢纽那份原封不动（§2.9.4） |
+| H31 | `SCANNED` / `TRANSLATING` / `TRANSLATION_NOT_APPLICABLE` → `WAITING_FOR_DESTINATION` | `destination_root` 为 `null` | B | 不是错误，是**正常的等待**：游戏已完工、待在枢纽里，等你用 `gf-deliver -To <路径>` 指定去处。可以先看看解出来是什么再定 |
 | M12 | `READY_FOR_TRANSLATION` → `TRANSLATING` | 人显式触发前台会话（C），且 `mtool-profiles\<item-id>.json` 存在且 `target_exe` 非 `ambiguous` | C | MOTW 已 `Unblock-File`（**是前置条件不是收尾**）——忘了会让 Computer Use 撞上 SmartScreen 的前台模态框而卡死【社区】；若 `version.dll` 已存在 → 判定已处理，**不重复注入**，直接走 M14 |
 | M13 | `READY_FOR_TRANSLATION` → `TRANSLATION_NOT_APPLICABLE` | `engine ∈ {Unity, Godot, Unreal}`——MTool 官网与 Patreon 两个独立来源的引擎清单都没有这三者【官方】 | B / C | `engine != UNKNOWN`——`UNKNOWN` 走 H22，**不判不支持** |
-| M14 | `TRANSLATING` → `COMPLETE` | 人在前台确认翻译已加载 | C | **不得依赖产物文件存在性**作为判据——MTool 是注入式，产物 `.bin` 落盘位置未知【社区】【待测】；`mtool_build` 作为运行时字段记进 `state.json` |
+| M14 | `TRANSLATING` → `DELIVERING` | 人在前台确认翻译已加载（`translation.mode = none` 时由 `SCANNED` 直接进入） | C | **不得依赖产物文件存在性**作为判据——MTool 是注入式，产物 `.bin` 落盘位置未知【社区】【待测】；`mtool_build` 作为运行时字段记进 `state.json` |
 
 > M06 号位空置：`EXTRACTING` 的递归层推进不是迁移（见 §4.1 补充 1）。编号保留空位，便于日后插入而不动既有引用。
 
@@ -2644,7 +2722,7 @@ Recover(itemDir, actor):
 | H25 | 任一非终态 → `ABANDONED` | `HUMAN_ABANDON` | 人 | 只由专用命令触发（§4.8）；`resume_allowed = []` |
 | H26 | `DOWNLOAD_STABLE` → `BLOCKED_RESOURCE` | A 在只读预检里检出：`PATH_TRAVERSAL_DETECTED` · `INSUFFICIENT_SPACE` · `BOMB_SUSPECTED` · `SIZE_CAP_EXCEEDED`（与 H08 同一组 `reason_code`，只是执行体与时点不同） | **A** | A **只判不动**：不删、不改名、不解压；`resume_allowed=[DOWNLOAD_STABLE]`（清盘/放行后由 B 重走 M04） |
 | H27 | `AWAITING_DOWNLOAD` → `WAITING_FOR_RULE` | `RULE_NETDISK_TEMP_SUFFIX_RESIDUE`：网盘客户端完成后残留临时后缀（典型是百度网盘），G1 因此永不成立（模式表见 §3.6.2） | A | 人工去后缀是文件系统动作，**不由 A 执行**（I5）；`resume_allowed=[AWAITING_DOWNLOAD]`，`cleared_by_allowed` 含 `A`——判据完全在 A 的职权内（下一轮重新求值 G1–G6） |
-| H28 | `DOWNLOAD_STABLE` → `PATH_BUDGET_EXCEEDED` | `PATH_BUDGET_ENTRY_TOO_LONG`：`l -slt` 里最长内部条目路径 + 库根 + `dirname` 超出 §2.5 的 MAX_PATH 预算，且 `dirname` 已经是 §3.2A 的降级 ASCII slug | A | 与 `WAITING_FOR_RULE` 的区别是**人工动作不同**：这里要改配置（换更短库根 / 人工指定更短目录名），不是补一条规则；`resume_allowed=[DOWNLOAD_STABLE]` |
+| H28 | `DOWNLOAD_STABLE` → `PATH_BUDGET_EXCEEDED` | `PATH_BUDGET_ENTRY_TOO_LONG`：`l -slt` 里最长内部条目路径 + 枢纽根 + `dirname` 超出 §2.5 的 MAX_PATH 预算，且 `dirname` 已经是 §3.2A 的降级 ASCII slug | A | 与 `WAITING_FOR_RULE` 的区别是**人工动作不同**：这里要改配置（换更短枢纽根 / 人工指定更短目录名），不是补一条规则；`resume_allowed=[DOWNLOAD_STABLE]` |
 | H29 | `EXTRACTING` → `PATH_BUDGET_EXCEEDED` | `PATH_BUDGET_ENTRY_TOO_LONG`：内层解出的条目路径超预算（头加密包拿不到条目表，只能在这里才发现） | B | staging 保留给人看；`resume_allowed=[PREFLIGHT_OK]` |
 | H30 | 任一状态 → `JOURNAL_CORRUPT` | `JOURNAL_UNPARSABLE`：重放时命中**不可解析的中间行**（尾部半行不算，见 §4.5.1），或 `events.jsonl` 整体不可读/缺失 | 重放器（A/B/C 任一） | 判定是 journal 字节的**纯函数**，每次重放同一结论——这正是它能落盘而不是运行期状况的理由；`resume_allowed = []`，**连 R15 都不适用**（见 §4.3.17） |
 
@@ -2777,7 +2855,7 @@ Recover(itemDir, actor):
 
 | 触发条件（可编程判据） | 你要做什么 | 做完回到 | 谁能解除 |
 |---|---|---|---|
-| `INSUFFICIENT_SPACE`（H08/H12/H26）：§6.12.5 的余量公式为负。 | 清盘，或把库根挪到更大的卷（注意：必须与 `_stg` 同卷）。判据全自动复核。 | A 检出 → `DOWNLOAD_STABLE`；B 检出 → `PREFLIGHT_OK` | **B**（人清完盘触发 `-Retry` 即可） |
+| `INSUFFICIENT_SPACE`（H08/H12/H26）：§6.12.5 的余量公式为负。 | 清盘，或把枢纽根挪到更大的卷（注意：必须与 `_stg` 同卷）。判据全自动复核。 | A 检出 → `DOWNLOAD_STABLE`；B 检出 → `PREFLIGHT_OK` | **B**（人清完盘触发 `-Retry` 即可） |
 | `BOMB_SUSPECTED`（H08/H26）：`ratio ≥ ratio_block` **且** `sum(Size) > 5 GiB`。`ratio ≥ ratio_warn` 只记日志不阻断——实测合法的纯文本汉化补丁 7z 就有 133x，真炸弹 1029x，**中间没有干净分界**【实测】。头部声明的大小**会撒谎**，真正的护栏是运行期 staging 体积监控 + 绝对上限 + 磁盘余量。 | 看报告里的 `sum(Size)` 与归档级 `Physical Size`，判断是不是真的异常。确认无害 → 在批次条目里为该 item 声明护栏例外（**只对这一个 item 生效，不要改全局阈值**）。 | 同上 | **B** |
 | `SIZE_CAP_EXCEEDED` / `STAGING_SIZE_CAP`（H08/H12/H26）：超总量上限、单文件上限，或运行期 staging 体积超绝对上限。 | 同上：确认后为该 item 抬高上限。**头加密包只有这一道护栏**（体积/条目/穿越/压缩比四项预算全部失效）【官方+实测·macOS】，抬高前务必想清楚。 | 同上 | **B** |
 | `DEPTH_LIMIT`（H12）：`extract.depth_reached > max_depth`。计数口径是"成功解开一个白名单容器 = depth+1"（§6.4），不是"调用了几次 7z"。 | 看报告里的解包链路（每一层的 `Type` 与文件名）。链路合理 → 为该 item 抬高 `max_depth`；链路是自嵌套循环 → 按炸弹处理，别抬。 | `PREFLIGHT_OK` | **B** |
@@ -2807,7 +2885,7 @@ Recover(itemDir, actor):
 
 | 触发条件（可编程判据） | 你要做什么 | 做完回到 | 谁能解除 |
 |---|---|---|---|
-| `MTOOL_LOAD_FAILED`（H23）：你在前台观察到翻译没加载上。**判据是人的观察，不是产物文件存在性**——MTool 的 `.bin` 落盘位置未知【社区】【待测】。 | 常见原因按顺序排查：① 库根落在 OneDrive 同步目录或 `Program Files` 下【社区】；② `target_exe` 选错（回 `WAITING_FOR_MTOOL_RULE` 改 profile）；③ 该引擎 MTool 本就不支持。 | ①② → `READY_FOR_TRANSLATION`；③ → `TRANSLATION_NOT_APPLICABLE` | **C** |
+| `MTOOL_LOAD_FAILED`（H23）：你在前台观察到翻译没加载上。**判据是人的观察，不是产物文件存在性**——MTool 的 `.bin` 落盘位置未知【社区】【待测】。 | 常见原因按顺序排查：① 枢纽根落在 OneDrive 同步目录或 `Program Files` 下【社区】；② `target_exe` 选错（回 `WAITING_FOR_MTOOL_RULE` 改 profile）；③ 该引擎 MTool 本就不支持。 | ①② → `READY_FOR_TRANSLATION`；③ → `TRANSLATION_NOT_APPLICABLE` | **C** |
 
 > 幂等提示：重试前**不必**清掉 `version.dll`。进入 MTool 前若 `version.dll` 已存在 → 判定已注入，不重复注入【社区】——该判据在真实注入流程中的可靠性【待测】。
 
@@ -2821,7 +2899,7 @@ Recover(itemDir, actor):
 
 | 触发条件（可编程判据） | 你要做什么 | 做完回到 | 谁能解除 |
 |---|---|---|---|
-| `PATH_BUDGET_ENTRY_TOO_LONG`（H28 由 A 在只读预检算出；H29 由 B 在内层解包时撞上）：`库根 + games\ + dirname + 最长内部条目路径` 超出 §2.5 的 MAX_PATH 预算（建目录实际上限是 248 = `MAX_PATH−12`，不是 260【社区】），**且 `dirname` 已经是 §3.2A 的降级 ASCII slug**——也就是说自动手段已经用尽。 | **改配置，不是补规则**（这正是它与 `WAITING_FOR_RULE` 分开成态的理由）：① 把库根换到更短的路径（`D:\GL\` 这类），或 ② 在批次条目里人工指定一个更短的 `dirname`（仍须过 §3.2A 的合法性检查，且降级原因必须记录）。改完预算算术可自动复核。<br>`LongPathsEnabled=1` 下 PowerShell 对 >260 字符路径的实际行为【待测】——在实测之前**不要**靠它来解决本态。 | H28 → `DOWNLOAD_STABLE`；H29 → `PREFLIGHT_OK` | **B** |
+| `PATH_BUDGET_ENTRY_TOO_LONG`（H28 由 A 在只读预检算出；H29 由 B 在内层解包时撞上）：`枢纽根 + games\ + dirname + 最长内部条目路径` 超出 §2.5 的 MAX_PATH 预算（建目录实际上限是 248 = `MAX_PATH−12`，不是 260【社区】），**且 `dirname` 已经是 §3.2A 的降级 ASCII slug**——也就是说自动手段已经用尽。 | **改配置，不是补规则**（这正是它与 `WAITING_FOR_RULE` 分开成态的理由）：① 把枢纽根换到更短的路径（`D:\GL\` 这类），或 ② 在批次条目里人工指定一个更短的 `dirname`（仍须过 §3.2A 的合法性检查，且降级原因必须记录）。改完预算算术可自动复核。<br>`LongPathsEnabled=1` 下 PowerShell 对 >260 字符路径的实际行为【待测】——在实测之前**不要**靠它来解决本态。 | H28 → `DOWNLOAD_STABLE`；H29 → `PREFLIGHT_OK` | **B** |
 
 #### 4.3.17 JOURNAL_CORRUPT — `events.jsonl` 不可解析
 
@@ -2878,7 +2956,7 @@ Recover(itemDir, actor):
 #### 4.4.3 attempt-id 与 staging
 
 - **格式**：`attempt_id = <UTC 紧凑 ISO>-<4hex>`，例如 `20260912T041205Z-7c2e`。全局唯一，**永不复用**。**不用 ULID**——它与 `_stg\<8hex>` 的映射关系对不上，也不满足"显式生成的受限字符集 slug"。
-- **staging 路径**：`D:\GameLib\_stg\<8hex>\`（产物直接落这一层，**没有 `w\` 子目录**；分卷重建副本落**同级**的 `_stg\<8hex>-p\`）。`8hex` 与 `attempt_id` 的映射写在进入 `EXTRACTING` 的事件里。用 8 位十六进制而不是 `attempt_id` 本身，是 MAX_PATH 预算需要（`D:\GameLib\_stg\<8hex>\` = 25 字符；按上游设计放成 `games\<名>\.gameflow\staging\<attempt-id>\` 单这一段就吃 39 字符）【实测·字符计数】。
+- **staging 路径**：`D:\GameHub\_stg\<8hex>\`（产物直接落这一层，**没有 `w\` 子目录**；分卷重建副本落**同级**的 `_stg\<8hex>-p\`）。`8hex` 与 `attempt_id` 的映射写在进入 `EXTRACTING` 的事件里。用 8 位十六进制而不是 `attempt_id` 本身，是 MAX_PATH 预算需要（`D:\GameHub\_stg\<8hex>\` = 25 字符；按上游设计放成 `games\<名>\.gameflow\staging\<attempt-id>\` 单这一段就吃 39 字符）【实测·字符计数】。
 - **必须与游戏库同卷**——`File.Replace` 跨卷**抛异常**【官方】https://learn.microsoft.com/en-us/dotnet/api/system.io.file.replace；staging→落地跨卷会退化成复制+删除，而 .NET 文档自己点名 `Copy`+`Delete` **不原子**（崩溃会留下半写的目标文件）【官方·同上】。
 - **一个 attempt 一个 staging，永不共用、永不追加复用。** 重跑就是新 attempt——这比"清理旧 staging 再用"少一个失败模式。
 
@@ -2962,7 +3040,7 @@ Rebuild(itemDir) -> state:
 
 ```
 ReclaimStaging(libraryRoot):                      # 只由 B 做；A 永不删除（I5）
-  onDisk  := { 每个 D:\GameLib\_stg\<8hex>\ }
+  onDisk  := { 每个 D:\GameHub\_stg\<8hex>\ }
   live    := {}                                   # 仍被引用的 staging
   for item in 本批次全部 item:
       s := Rebuild(item)                           # 在该 item 的锁内
@@ -2971,7 +3049,7 @@ ReclaimStaging(libraryRoot):                      # 只由 B 做；A 永不删�
           标记 s.current_attempt 为 crash_orphan
       live 中只保留「本次运行自己刚创建的 attempt」
   for stg in onDisk - live:
-      断言 stg 的完整路径以 "D:\GameLib\_stg\" 为前缀        # 前缀断言，无条件执行
+      断言 stg 的完整路径以 "D:\GameHub\_stg\" 为前缀        # 前缀断言，无条件执行
       递归删除 stg
       追加 staging.discarded{attempt_id, reason_code}
 ```
@@ -3011,15 +3089,15 @@ ReclaimStaging(libraryRoot):                      # 只由 B 做；A 永不删�
 #### 4.6.1 两层文件锁，一个并发单位
 
 ```
-D:\GameLib\batches\<batch-id>.lock              批次级   FileShare.None
-D:\GameLib\games\<dirname>\.gameflow\.lock      item 级  FileShare.None   ← 真正的并发单位
+D:\GameHub\batches\<batch-id>.lock              批次级   FileShare.None
+D:\GameHub\games\<dirname>\.gameflow\.lock      item 级  FileShare.None   ← 真正的并发单位
 ```
 
 ```powershell
 $lock = [System.IO.File]::Open($lockPath, 'OpenOrCreate', 'ReadWrite', 'None')
 ```
 
-**两层都必须取**：A 与 B 只有争同一个句柄才谈得上互斥。B（§6.1.2 步骤 00）取批次锁、并在每个 item 的循环体内取/放条目锁，形状与 §5.1.2 第 4 步相同；**不存在库级的 `D:\GameLib\.lock`**。
+**两层都必须取**：A 与 B 只有争同一个句柄才谈得上互斥。B（§6.1.2 步骤 00）取批次锁、并在每个 item 的循环体内取/放条目锁，形状与 §5.1.2 第 4 步相同；**不存在库级的 `D:\GameHub\.lock`**。
 
 选它的五条理由：
 
@@ -3339,9 +3417,9 @@ Codex 的内置浏览器**没有「按任务/按游戏」的下载目录**——
 所以上游设计里「Codex 将下载目标定到 `games\<游戏名>\`」**这个能力不存在**。取而代之的契约是：
 
 ```
-全局下载目录 = D:\GameLib\_inbox        （唯一下载落地目录，D-02）
+全局下载目录 = D:\GameHub\_inbox        （唯一下载落地目录，D-02）
         ↓  执行体 A 按批次清单认领归位
-D:\GameLib\games\<dirname>\             （C3 的终态保证）
+D:\GameHub\games\<dirname>\             （C3 的终态保证）
 ```
 
 **C3「源包与游戏本体同目录」是终态保证，不是落地瞬间的保证。**
@@ -3383,7 +3461,7 @@ D:\GameLib\games\<dirname>\             （C3 的终态保证）
 
 #### 5.2.4 跨卷：A 拒绝执行
 
-`_inbox` 与 `games\` 按 §2.4 的目录布局同在 `D:\GameLib\` 下，天然同卷。若 Preflight（§9）探测到二者**不同卷**（用户把下载目录设到了别的盘）：
+`_inbox` 与 `games\` 按 §2.4 的目录布局同在 `D:\GameHub\` 下，天然同卷。若 Preflight（§9）探测到二者**不同卷**（用户把下载目录设到了别的盘）：
 
 - 跨卷 `File.Move` 在 .NET 上退化为「复制 + 删除源」——**删除源违反 A-R3**。
 - 契约：A **不做跨卷认领**。整批认领跳过，报告顶部长期显示一条阻塞提示。
@@ -3935,7 +4013,7 @@ ScanZipFilenameEncoding(path):            # path = 单文件 ZIP，或分卷 ZIP
 
 #### 5.9.1 结构契约（全 SPEC 的报告格式以本小节为准）
 
-`D:\GameLib\_reports\<batch-id>-<seq>.md`，UTF-8 无 BOM（`[System.IO.File]::WriteAllText(path, text, UTF8Encoding($false))`——`Out-File`/`>` 会写成 UTF-16LE，PS 5.1 的 `-Encoding utf8` 带 BOM，两者都会让中文游戏名在后续读取里错位，详见 §8.8 的落盘协议）。
+`D:\GameHub\_reports\<batch-id>-<seq>.md`，UTF-8 无 BOM（`[System.IO.File]::WriteAllText(path, text, UTF8Encoding($false))`——`Out-File`/`>` 会写成 UTF-16LE，PS 5.1 的 `-Encoding utf8` 带 BOM，两者都会让中文游戏名在后续读取里错位，详见 §8.8 的落盘协议）。
 
 **Front-matter** 必须有：`batch_id` / `seq` / `run_id`（紧凑形，§3.3.1）/ `generated_utc` / `digest`（§5.1.2 第 5 步的去重指纹）/ `script_version` / `sevenzip_version` / `acp` / `beta_utf8`。
 环境信息**只在 front-matter 出现一次**——§9.11.3 的「顶部环境条」与它二选一，本 SPEC 选 front-matter。
@@ -4027,7 +4105,7 @@ V1 序号连续 ✔ ／ V2 除末卷外等大 ✔ ／ V3 末卷更小 ✘ ／ V4
 
 ## 🟡 待认领（2 组）
 
-`D:\GameLib\_inbox\` 里有 2 组文件没能对应到本批次的任何条目。**巡检没有碰它们**（不移动、不改名、不删除）。
+`D:\GameHub\_inbox\` 里有 2 组文件没能对应到本批次的任何条目。**巡检没有碰它们**（不移动、不改名、不删除）。
 
 | 组 | 文件数 / 总字节 | 首卷分诊 | 为什么没认出来 | 你要做的 |
 |---|---|---|---|---|
@@ -4075,7 +4153,7 @@ V1 序号连续 ✔ ／ V2 除末卷外等大 ✔ ／ V3 末卷更小 ✘ ／ V4
 
 #### 5.10.1 用 Windows 任务计划，不用 Codex 的 Scheduled tasks
 
-四条理由：① A 是纯确定性的文件处理器，用一个 LLM turn 驱动它等于把确定性逻辑塞进不确定的载体，还要烧 token；② Codex 计划任务要求「机器开机 **+ 桌面 App 常驻** + 项目目录在盘上 + 沙盒能写到 `D:\GameLib`」【官方】，Windows 任务计划只要求用户登录着；③ E1 主力机会被打断、桌面 App 可能被关掉，任务计划不会；④ Codex 计划任务「run unattended with your default sandbox settings」，workspace-write 下写不到 project 外的目录，还要额外配 `writable_roots`【官方】（§8.3）。
+四条理由：① A 是纯确定性的文件处理器，用一个 LLM turn 驱动它等于把确定性逻辑塞进不确定的载体，还要烧 token；② Codex 计划任务要求「机器开机 **+ 桌面 App 常驻** + 项目目录在盘上 + 沙盒能写到 `D:\GameHub`」【官方】，Windows 任务计划只要求用户登录着；③ E1 主力机会被打断、桌面 App 可能被关掉，任务计划不会；④ Codex 计划任务「run unattended with your default sandbox settings」，workspace-write 下写不到 project 外的目录，还要额外配 `writable_roots`【官方】（§8.3）。
 
 Codex 仍然保留「手动催一次巡检 / 批次对账 / 归档报告」这几个 skill（§8.5），它们调用的是**同一个入口脚本**，只是 `trigger` 不同。
 
@@ -4107,13 +4185,13 @@ Register-ScheduledTask -TaskName 'GameFlow-Sweep' -Action $action `
 | `-NoProfile` / `-NonInteractive` | 必须 | 前者挡住 `$PROFILE` 的别名/函数让行为随环境漂移；后者让任何意外的 `Read-Host` 直接失败，而不是**永久挂起** |
 | `-ExecutionPolicy Bypass` | 必须 | 只对该进程生效，不改系统策略。⚠ 若 `MachinePolicy`/`UserPolicy` 被 GPO 设过**这个参数无效**——Preflight 必须探测 `Get-ExecutionPolicy -List` 的全部作用域（§9），失败时脚本以退出码 `3` 结束 |
 
-入口参数形状（只接收受限字符集 token、库根由脚本从配置解析而**不作为参数传入**）的理由见 §8.2.2 / §8.2.3：Codex 的 Windows 原生 agent 跑的是 PS 5.1，会把参数数组重新拼成一个字符串，带空格的路径或标题在最外层就会被拆坏【官方逐字复核 + 实测】。
+入口参数形状（只接收受限字符集 token、枢纽根由脚本从配置解析而**不作为参数传入**）的理由见 §8.2.2 / §8.2.3：Codex 的 Windows 原生 agent 跑的是 PS 5.1，会把参数数组重新拼成一个字符串，带空格的路径或标题在最外层就会被拆坏【官方逐字复核 + 实测】。
 
 #### 5.10.3 **不要用 S4U**
 
 任务计划的「不存储密码。该任务将只能访问本地资源」= `TASK_LOGON_S4U`。官方原文：*"Use an existing interactive token to run a task. ... **When an S4U logon is used, no password is stored by the system and there is no access to either the network or encrypted files.**"*【官方 Microsoft Learn · Principal.LogonType】
 
-两个后果：① 没有密码 → 无法派生该用户的 DPAPI master key → **解不开 `%LOCALAPPDATA%\GameFlow\vault.clixml`**；虽然 A 本来就不碰密码（A-R1），但**同一个入口脚本**也会被人手动触发，习惯性配成 S4U 会让日后任何读 vault 的路径都以极难排查的方式失败。② 「no access to network」→ 若库根落在网络位置，A 直接读不到。
+两个后果：① 没有密码 → 无法派生该用户的 DPAPI master key → **解不开 `%LOCALAPPDATA%\GameFlow\vault.clixml`**；虽然 A 本来就不碰密码（A-R1），但**同一个入口脚本**也会被人手动触发，习惯性配成 S4U 会让日后任何读 vault 的路径都以极难排查的方式失败。② 「no access to network」→ 若枢纽根落在网络位置，A 直接读不到。
 
 同样不推荐：`SYSTEM` / `ServiceAccount`（解不开该用户的 DPAPI blob + 权限过大）、`InteractiveOrPassword`（官方自己说 *"This flag is not recommended for new tasks because it is less reliable"*）。
 
@@ -4167,10 +4245,10 @@ B 需要两样 A 永远拿不到的东西，两条都是官方硬约束：
 Invoke-Work.ps1 -BatchId <slug> [-ItemId <slug>] [-Phase all|extract|verify|scan|land|delete]
                                                   （入口与退出码契约：§8.2.3）
 
-00  取**批次锁**：[System.IO.File]::Open(D:\GameLib\batches\<batch-id>.lock,
+00  取**批次锁**：[System.IO.File]::Open(D:\GameHub\batches\<batch-id>.lock,
                                           Open|Create, ReadWrite, None)
       失败 -> 打印 LOCKED_BY_ANOTHER_RUN，退出，**不写任何状态**（运行期瞬时状况，不落盘）
-01  读 D:\GameFlow\rules\*.json 与 D:\GameLib\batches\<batch-id>.json
+01  读 D:\GameFlow\rules\*.json 与 D:\GameHub\batches\<batch-id>.json
       worklist = 批次条目中 abandoned != true 的全部（§3.2.5）
       **运行期状态一律取自 state.json / Replay(events.jsonl)，绝不读批次条目的字段**
     写事件 run.started（§3.3）
@@ -4180,7 +4258,7 @@ Invoke-Work.ps1 -BatchId <slug> [-ItemId <slug>] [-Phase all|extract|verify|scan
 03      从 games\<dirname>\.gameflow\events.jsonl 重建 state（I2；重放按**文件行序**，§3.3.5）
 04      state ∉ {PREFLIGHT_OK} ∪ 可续跑集合  ->  释放条目锁，跳过该 item
 05      attempt_id := <UTC 紧凑 ISO>-<4hex>（格式见 §3.4.1 / §4.4.3）
-        stg_id     := 8 位十六进制；建 D:\GameLib\_stg\<stg_id>\          （§6.4.1）
+        stg_id     := 8 位十六进制；建 D:\GameHub\_stg\<stg_id>\          （§6.4.1）
 06      §6.12  磁盘余量预检                      不足 -> BLOCKED_RESOURCE
 07      §6.3   解析密码链 P0..P6 + 等价展开       用尽 -> WAITING_FOR_PASSWORD
                                                  编码疑点 -> PASSWORD_ENCODING_SUSPECT
@@ -4207,7 +4285,7 @@ Invoke-Work.ps1 -BatchId <slug> [-ItemId <slug>] [-Phase all|extract|verify|scan
 21      §6.8   **重新从磁盘读 state.json**，按 verified+consumed_by gate 删源包（I3）
 22      §6.10  Unblock-File 整树；写 manifest.stage1_snapshot 文件清单（§3.5）
 23      ==> 状态 SCANNED       （§7 的前置条件在此刻全部就绪）
-24      清空 D:\GameLib\_stg\<stg_id>\ 与 _stg\<stg_id>-p\（若存在）；释放条目锁
+24      清空 D:\GameHub\_stg\<stg_id>\ 与 _stg\<stg_id>-p\（若存在）；释放条目锁
 25  写事件 run.ended；释放批次锁
 ```
 
@@ -4651,10 +4729,10 @@ if 容器是 RAR4 且 所有候选全部失败:
 #### 6.4.1 staging 布局
 
 ```
-D:\GameLib\_stg\<stg_id>\          stg_id = 8 位十六进制，与 attempt_id 一一对应
+D:\GameHub\_stg\<stg_id>\          stg_id = 8 位十六进制，与 attempt_id 一一对应
                                    **解压产物直接落在这里，没有子层**
                                    前缀长度 25 字符（与 §2.5.3 的预算表完全一致）
-D:\GameLib\_stg\<stg_id>-p\        **同级**目录，分卷重建（§6.5）等必须落盘的一次性产物，
+D:\GameHub\_stg\<stg_id>-p\        **同级**目录，分卷重建（§6.5）等必须落盘的一次性产物，
                                    用后即删；内部只放 ASCII 短名 vol.NNN
 ```
 
@@ -4807,7 +4885,7 @@ V3  批次条目里有**显式声明**的重建规则（人工确认过，`WAITI
 #### 6.5.3 重建过程（**不动原文件**）
 
 ```
-1  dst := D:\GameLib\_stg\<stg_id>-p\            (新建空目录，与 _stg\<stg_id>\ 同级)
+1  dst := D:\GameHub\_stg\<stg_id>-p\            (新建空目录，与 _stg\<stg_id>\ 同级)
 2  for i, name in enumerate(members, start=1):
        Copy-Item -LiteralPath <源目录>\<name>  ->  dst\vol.{i:000}
        # **复制，不是移动、不是改名。** 原文件从头到尾没有被改名、移动或写入。
@@ -5035,7 +5113,7 @@ if |content_files| == 0:
 
 - **归属 B**：`MpCmdRun` 官方明写需提权，与 `-RunLevel Limited` 的无人值守计划任务冲突。【官方 MS Learn】
 - **时点**：`VERIFYING` 之内、`staging.promoted`（落地）**之前**（6.1.2 第 16 步）。**§4 已按此改**（见 6.1.2 的对齐点）。
-- **对象**：`D:\GameLib\_stg\<stg_id>\` 整树。归档本身也可以扫（官方：`-DisableRemediation` 模式下 *"Archive files are scanned"*），但主判据是对解压产物扫。
+- **对象**：`D:\GameHub\_stg\<stg_id>\` 整树。归档本身也可以扫（官方：`-DisableRemediation` 模式下 *"Archive files are scanned"*），但主判据是对解压产物扫。
 
 #### 6.9.2 二选一：**选 `-DisableRemediation`**
 
@@ -5090,8 +5168,8 @@ Preflight 自检（§9.11.2）：
 排除项清单、误报应急（`-Restore`）与回滚脚本的完整规定在 **§9.8.4**，本节只复述对 B 有直接约束的三条：
 
 ```
-只排 D:\GameLib\_stg\ 这一个目录（避免实时保护在解压中途隔离/锁住文件）
-games\ 与整个 D:\GameLib：**绝不排除**（库里装的正是最可能带毒的东西）
+只排 D:\GameHub\_stg\ 这一个目录（避免实时保护在解压中途隔离/锁住文件）
+games\ 与整个 D:\GameHub：**绝不排除**（库里装的正是最可能带毒的东西）
 ```
 
 - B 每次进入 Defender 阶段前用 `MpCmdRun.exe -CheckExclusion -Path <路径>` 确认排除生效（输出 "is excluded. Exit code is 0."）。【官方】
@@ -5139,7 +5217,7 @@ games\ 与整个 D:\GameLib：**绝不排除**（库里装的正是最可能带�
 
 #### 6.10.4 MOTW **不得**作为安全边界
 
-完整声明在 **§9.4**，本节只给 7-Zip 侧的三条成因：① CLI 默认值**未知**（上表）；② `-snz` 传播的是**归档自身的** Zone.Identifier，下载器没给归档打标记就什么都传不下去；③ MOTW 只在 **NTFS** 上存在（官方：*"…only applies to files saved on an NTFS file system, not files saved to FAT32 formatted devices."*）→ **库根若落在 exFAT 移动硬盘上，整个 MOTW 话题自动消失**（§9.11.2 的 Preflight 必须探测卷的文件系统并记进 `env.snapshot`）。另外这是个反复出问题的区域（24.09 的 CVE-2025-0411、26.03 的 CVE-2026-58052），且 CLI 与 GUI 行为不一致。【官方 + 官方 history.txt】
+完整声明在 **§9.4**，本节只给 7-Zip 侧的三条成因：① CLI 默认值**未知**（上表）；② `-snz` 传播的是**归档自身的** Zone.Identifier，下载器没给归档打标记就什么都传不下去；③ MOTW 只在 **NTFS** 上存在（官方：*"…only applies to files saved on an NTFS file system, not files saved to FAT32 formatted devices."*）→ **枢纽根若落在 exFAT 移动硬盘上，整个 MOTW 话题自动消失**（§9.11.2 的 Preflight 必须探测卷的文件系统并记进 `env.snapshot`）。另外这是个反复出问题的区域（24.09 的 CVE-2025-0411、26.03 的 CVE-2026-58052），且 CLI 与 GUI 行为不一致。【官方 + 官方 history.txt】
 
 > **真正的护栏是 §6.9 的显式 Defender 预检**，它是主动的、不依赖 7-Zip 正确性的。MOTW 只是「中间态里多一层提示」。
 > 顺带一条澄清：**7-Zip 的版本下限不以 MOTW 为理由**（既然不把它当安全边界，用它当理由就自相矛盾）。硬下限 **25.01**、建议 **≥ 26.02**，理由是**解析不可信归档的内存安全漏洞**——完整论证与准入矩阵见 **§9.9.3 / §9.11.4**。落后时在报告顶部长期提示，**但不拒绝运行**。
@@ -5417,7 +5495,7 @@ $ 7zz x selfext.exe    -> exit 0，4 个文件全部正确解出
 | **零架构改动** | `_inbox` 统一落地 + G1–G6 完成判定 + 认领归位（§5.2、§5.3）本来就是为「文件从哪来我不管，落地了我负责」设计的 |
 | **它就是 C1 里那句「需要人工做一部分」** | 用户原话是「不使用 computer use 的纯后台阶段一（**需要人工做一部分**）」。见 §12 的 D-14 |
 
-**`computer_use` 路径的边界**（选它之前要知道）：它做的是「转存 + 设下载目录 + 开始下载」，**落地目录仍然是 `<库根>\_inbox`**——C 不为每个游戏单独选目录（内置浏览器没有按任务的下载目录，U1；客户端里逐个选目录也正是最容易点错的操作）。完成判定与认领归位仍然由 A 做。也就是说 **`computer_use` 只替换上面流程图左半边的人工部分，右半边一个字节都不变**。
+**`computer_use` 路径的边界**（选它之前要知道）：它做的是「转存 + 设下载目录 + 开始下载」，**落地目录仍然是 `<枢纽根>\_inbox`**——C 不为每个游戏单独选目录（内置浏览器没有按任务的下载目录，U1；客户端里逐个选目录也正是最容易点错的操作）。完成判定与认领归位仍然由 A 做。也就是说 **`computer_use` 只替换上面流程图左半边的人工部分，右半边一个字节都不变**。
 
 **由此 C 的职责为**：
 
@@ -5472,7 +5550,7 @@ S3 + S4 的实现方式只有一条，也是本节最硬的契约：
         │
         ▼
    ┌──────────────────────────────────────────────────────────────┐
-   │ 载入 D:\GameLib\batches\<batch-id>.json                        │
+   │ 载入 D:\GameHub\batches\<batch-id>.json                        │
    │ 载入 D:\GameFlow\rules\netdisk-profiles.json / engine-rules.json│
    │ 计算 worklist（7.2.1），按批次清单里的**声明顺序**排序           │
    │   —— 不按体积排、不按预估耗时排、不做任何优先级评分              │
@@ -5487,7 +5565,7 @@ S3 + S4 的实现方式只有一条，也是本节最硬的契约：
         └─ continue
         │
         ▼
-   写 D:\GameLib\_reports\<batch-id>-<seq>.md（本次会话做了什么、还剩什么）
+   写 D:\GameHub\_reports\<batch-id>-<seq>.md（本次会话做了什么、还剩什么）
    明确告诉用户「机器还给你了」，会话结束
 ```
 
@@ -5561,7 +5639,7 @@ C_WORKLIST(batch, kind) :=
 
 #### 7.2.3 C 写回批次的字段
 
-写回目标是 `D:\GameLib\batches\<batch-id>.json`（完整 schema 见 §3），落盘事件同时 append 到对应游戏的 `.gameflow\events.jsonl`。
+写回目标是 `D:\GameHub\batches\<batch-id>.json`（完整 schema 见 §3），落盘事件同时 append 到对应游戏的 `.gameflow\events.jsonl`。
 
 | 字段 | 类型 | 接力段 | 语义与硬约束 |
 |---|---|---|---|
@@ -5600,11 +5678,11 @@ C_WORKLIST(batch, kind) :=
 **替代设计（D-02，写死）**：
 
 ```
-全局下载目录 = D:\GameLib\_inbox        ← 唯一落地目录，一次性人工设定（7.8）
+全局下载目录 = D:\GameHub\_inbox        ← 唯一落地目录，一次性人工设定（7.8）
       │
       │  A（§5）按批次清单认领归位
       ▼
-D:\GameLib\games\<dirname>\             ← C3「源包与本体同目录」在这里才成立
+D:\GameHub\games\<dirname>\             ← C3「源包与本体同目录」在这里才成立
 ```
 
 **C3 是终态保证，不是落地瞬间的保证。** 这一句必须在 §1、§2、§5、§7 保持完全一致的措辞。
@@ -5636,7 +5714,7 @@ D:\GameLib\games\<dirname>\             ← C3「源包与本体同目录」在�
 
 「Work 使用自己的浏览器，该浏览器运行在**云端的一台独立计算机上**，并非您手机或笔记本电脑上的浏览器……即使您离开并合上电脑，ChatGPT 也能继续工作。」【官方】docs/browser
 
-> 这段话很诱人，但它对本项目**没有任何用处**：云端浏览器下载的文件落在**云端机器**上，到不了 `D:\GameLib\_inbox`。不要把「合上电脑也能跑」这个卖点安到本地工作流头上，也不要在运维手册里让用户去试。
+> 这段话很诱人，但它对本项目**没有任何用处**：云端浏览器下载的文件落在**云端机器**上，到不了 `D:\GameHub\_inbox`。不要把「合上电脑也能跑」这个卖点安到本地工作流头上，也不要在运维手册里让用户去试。
 
 #### 7.3.5 下载不在 C 会话内等待
 
@@ -5731,7 +5809,7 @@ C 抓到密码候选
   "login": "client_qr",
   "requires_transfer": true,
   "download_channel": "desktop_client",
-  "landing_dir": "D:\\GameLib\\_inbox",
+  "landing_dir": "D:\\GameHub\\_inbox",
 
   "temp_suffixes": [".baiduyun.p.downloading", ".baiduyun.downloading"],
   "temp_name_globs": [],
@@ -5768,7 +5846,7 @@ C 抓到密码候选
 | 登录态 | 桌面客户端扫码登录（人工，R-01）；或走 @Chrome 扩展复用已登录网页 | 【官方】扩展路径见 docs/chrome-extension.md；扫码流程属通用常识 |
 | 转存 | **需要**。分享链接 →（输入提取码）→「保存到我的网盘」→ 再从我的网盘下载 | 用户原始流程陈述（CONTEXT 一、步骤 3），非技术断言 |
 | 下载通道 | **客户端为主** | 【社区】网页端下载限制与速度策略是社区共识且**政策数月一变**——这类断言只作背景解释，**不得**成为任何自动判定的输入 |
-| 落地 | 客户端下载目录，一次性人工设为 `D:\GameLib\_inbox`（7.8） | 设计规定 |
+| 落地 | 客户端下载目录，一次性人工设为 `D:\GameHub\_inbox`（7.8） | 设计规定 |
 | 临时物 | `*.baiduyun.p.downloading`（旧版也见 `*.baiduyun.downloading`） | 【社区】多篇中文技术文一致 |
 | 人工接力点 | R-01 登录 · R-04 转存确认 · R-05 密码确认 · R-11 残留后缀 | — |
 
@@ -5804,7 +5882,7 @@ C 抓到密码候选
 | 已知背景 | 「阿里云盘不支持常见压缩文件分享但支持 exe 分享」，故资源常打成 SFX 自解压 `.exe` | 【社区】单篇 2022 年 CSDN。**仅作为解释 C5/C6/C7 成因的背景**，**不得**成为自动判定输入。SFX 一律**当归档解，绝不执行**（见 §5 的「不进自动流程的形态」） |
 
 > **【待测】不实测的后果**：这两家的下载判定只剩通用判据（尺寸+mtime 双静默 ∧ `FileShare::None` 独占打开 ∧ `7z l -slt` 头自校验），而通用判据在**预分配下载器**面前完全失效——文件从第 0 秒起就是最终尺寸【官方 aria2 手册：`--file-allocation` 默认 `prealloc`】。若夸克/阿里客户端也预分配，会稳定误判成「下载完成」，然后 B 去解压一个半截文件，落 `CORRUPT` 或 `EXTRACT_FAILED_AMBIGUOUS`，用户以为是密码错。
-> **登记方法（R-12，五分钟的事）**：用该客户端下载**一个大文件**，在下载**进行中**执行 `Get-ChildItem -LiteralPath D:\GameLib\_inbox -Force`，记下所有不属于最终名的文件；下载完成后再执行一次，比较差集。把观察到的后缀填进 profile，把 `confidence` 改成 `observed`。
+> **登记方法（R-12，五分钟的事）**：用该客户端下载**一个大文件**，在下载**进行中**执行 `Get-ChildItem -LiteralPath D:\GameHub\_inbox -Force`，记下所有不属于最终名的文件；下载完成后再执行一次，比较差集。把观察到的后缀填进 profile，把 `confidence` 改成 `observed`。
 
 ---
 
@@ -5868,7 +5946,7 @@ engine == UNKNOWN                  →  WAITING_FOR_MTOOL_RULE（不是失败！
 
 **契约（写死）**：
 
-> **游戏根目录 = 包含引擎标记文件的那一层目录**，它**不等于** `D:\GameLib\games\<dirname>\`。
+> **游戏根目录 = 包含引擎标记文件的那一层目录**，它**不等于** `D:\GameHub\games\<dirname>\`。
 
 两个原因，都是真实存在的：
 
@@ -5879,7 +5957,7 @@ engine == UNKNOWN                  →  WAITING_FOR_MTOOL_RULE（不是失败！
 
 ```
 LOCATE_GAME_ROOT(item):
-    base  := D:\GameLib\games\<item.dirname>\
+    base  := D:\GameHub\games\<item.dirname>\
     depth := engine-rules.json 的 root_search_depth（默认 2，静态可配）
     dirs  := { base } ∪ { base 下深度 1..depth 的所有子目录 }
     hits  := { d ∈ dirs | MATCH_ENGINE(d) ≠ UNKNOWN }      # 7.6.3
@@ -5972,7 +6050,7 @@ engine == UNKNOWN  →  WAITING_FOR_MTOOL_RULE（停下来问人）
   "item_id": "g0042",
   "_note": "由 SPEC §7.6 定义。人工确认一次后即为该条目的永久裁决记录。",
 
-  "game_root": "D:\\GameLib\\games\\g0042\\SomeGame_v1.02",
+  "game_root": "D:\\GameHub\\games\\g0042\\SomeGame_v1.02",
   "game_root_decided_by": "auto",
 
   "engine": "RPGMaker_MV",
@@ -6108,7 +6186,7 @@ Kaspersky 版主确认的关键事实：MTool 的 `version.dll` **在不同游�
 ```
 阶段一（A/B）的归档与解压产物  →  人工放行按 **SHA-256** 白名单（哈希固定，可行）
 阶段二（C）的 MTool 注入产物   →  SHA-256 白名单**原理上无效**
-                              →  只能**目录级排除**：D:\GameLib\_stg\ + <MTool 安装目录>
+                              →  只能**目录级排除**：D:\GameHub\_stg\ + <MTool 安装目录>
 游戏根目录                      →  **不排除**，保留实时保护
 ```
 
@@ -6142,7 +6220,7 @@ Kaspersky 版主确认的关键事实：MTool 的 `version.dll` **在不同游�
 | **R-10** | 安装器 / 镜像 | B | 解出 NSIS / Inno / `setup.exe` / `.iso` 等 | **`WAITING_FOR_MANUAL_INSTALL`** | 手工安装或挂载，把游戏放进 `games\<dirname>\` | 人工把条目推到 `SCANNED`（§4 停机态手册） | 不定 |
 | **R-11** | 百度残留后缀 | A→人 | `_inbox` 里出现 `*.baiduyun.p.downloading` 且长时间静默（7.5.1） | **`WAITING_FOR_RULE`** | 到客户端确认任务真的完成，然后**手工**去掉后缀 | 文件以最终名出现后，A 下一轮重新走 G1..G6 | 视百度客户端行为，可能常见 |
 | **R-12** | 首次登记网盘临时后缀 | 人（一次性） | 首次使用夸克/阿里/123 客户端 | 无（前置准备） | 下一个大文件，下载中与下载后各 `Get-ChildItem -Force` 一次，比较差集；把后缀填进 `netdisk-profiles.json`，`confidence` 改 `observed` | 无需恢复；此后该网盘的 G1 才真正有效 | 每个网盘客户端一次 |
-| **R-13** | 首次设置 Defender 排除 | 人（一次性） | 部署时 | 无（前置准备） | 只排 `D:\GameLib\_stg\` 与 `<MTool 安装目录>`，**不排整个库**；同时明示同意 MTool 注入产物的豁免类别 | 记录进 `rules\` 与部署日志，可回滚 | 一次 |
+| **R-13** | 首次设置 Defender 排除 | 人（一次性） | 部署时 | 无（前置准备） | 只排 `D:\GameHub\_stg\` 与 `<MTool 安装目录>`，**不排整个库**；同时明示同意 MTool 注入产物的豁免类别 | 记录进 `rules\` 与部署日志，可回滚 | 一次 |
 | **R-14** | Defender 裁决 | B | 扫描检出（B 级疑似误报 / C 级扫描失败） | **`THREAT_SUSPECTED`** | 看报告里的威胁名与文件，判定误报还是真威胁 | 误报 → 按 SHA-256 放行，回到主线；真威胁 → 落 `THREAT_CONFIRMED`（硬停）或 `ABANDONED` | 汉化/破解类资源上并不罕见 |
 | **R-15** | 不明可执行文件 | B | 产物里出现未知 MZ 形态、且不属于已知引擎 | **`WAITING_FOR_MANUAL_INSTALL`** | 人工判断这是游戏本体、安装器还是别的 | 同 R-10 | 不定 |
 
@@ -6161,11 +6239,11 @@ C 会话开始前必须全部满足。检查项由 `Preflight.ps1` 输出（§9�
 | # | 前置条件 | 为什么 | 可信度 | 不满足会怎样 |
 |---|---|---|---|---|
 | **PC-1** | 目标游戏目录已 `Unblock-File` | 带 ZoneId=3 的 exe 首次运行会弹 SmartScreen 的「Windows protected your PC」**前台模态框**，需要点「更多信息 → 仍要运行」 | 【官方】MOTW 触发 SmartScreen 额外检查（Microsoft）；`Unblock-File` **幂等、对未标记文件无副作用**，可整目录批量跑：https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/unblock-file | Computer Use 撞上模态框卡死。**「解除标记」是 C 的前置条件，不是可选收尾** |
-| **PC-2** | 库根不在 OneDrive 同步目录下 | 把 MTool 或游戏放在 OneDrive 里会触发 inject 失败 | 【社区】https://bbs.mtool.app/topic/949/ | 注入失败，且失败原因不会指向 OneDrive，排查成本极高 |
-| **PC-3** | 库根不在 `Program Files` 下 | MTool 必须往游戏根目录写 `version.dll`；`Program Files` 需要提权，而 F4：Computer Use **无法以管理员身份验证** | 【社区】写入行为有 Kaspersky 帖佐证；权限推论 | 注入写不进去 |
+| **PC-2** | 枢纽根不在 OneDrive 同步目录下 | 把 MTool 或游戏放在 OneDrive 里会触发 inject 失败 | 【社区】https://bbs.mtool.app/topic/949/ | 注入失败，且失败原因不会指向 OneDrive，排查成本极高 |
+| **PC-3** | 枢纽根不在 `Program Files` 下 | MTool 必须往游戏根目录写 `version.dll`；`Program Files` 需要提权，而 F4：Computer Use **无法以管理员身份验证** | 【社区】写入行为有 Kaspersky 帖佐证；权限推论 | 注入写不进去 |
 | **PC-4** | MTool 已安装，且**可执行文件的签名状态已知** | Windows Computer Use 的应用白名单 `computer_use.windows.exes` 按「**已验证的发布者与签名版本信息，而不是路径或当前文件名**」匹配；**未签名**的可执行文件落 `computer_use.default_app_access` 兜底；**签名身份无法明确验证的直接被 block** | 【官方】config-reference | **MTool 的签名状态未知**【待测】。若属「签名无法明确验证」，C 根本操作不了 MTool，整个 7.6 落空。**这是本节风险最高的一条**，应在落地路线里最先验证 |
 | **PC-5** | Codex **桌面 App**（不是 CLI、不是 IDE 扩展）；Computer Use 插件已安装并开启 | 「Codex CLI 和 Codex IDE 扩展均不支持浏览器功能。请打开 ChatGPT 桌面应用，使用内置浏览器。」；Computer Use 需安装插件 | 【官方】docs/browser、docs/computer-use | C 无法启动 |
-| **PC-6** | 全局下载目录已设为 `D:\GameLib\_inbox`；**关闭**「询问下载文件的保存位置」 | 7.3.1：只有全局设置这一条路 | 【官方】docs/browser | 文件落到「下载」文件夹，A 认领不到，整批卡在 `AWAITING_DOWNLOAD` |
+| **PC-6** | 全局下载目录已设为 `D:\GameHub\_inbox`；**关闭**「询问下载文件的保存位置」 | 7.3.1：只有全局设置这一条路 | 【官方】docs/browser | 文件落到「下载」文件夹，A 认领不到，整批卡在 `AWAITING_DOWNLOAD` |
 | **PC-7** | 若走 @Chrome/@Edge 扩展：扩展已装、已在「设置 > 计算机使用」里显示 **Manage**，且**该浏览器自身**的下载目录也已设为 `_inbox` | 扩展驱动的是用户自己的浏览器，用的是那个浏览器的下载设置 | 【官方】docs/chrome-extension.md | 同 PC-6 |
 | **PC-8** | 网盘客户端的下载目录已设为 `_inbox`，且已登录 | 客户端有自己的下载目录设置，绕开浏览器 | 设计规定 | 同 PC-6 |
 | **PC-9** | 该条目的 `mtool-profiles\<item-id>.json` 存在且 `ambiguous == false`（仅 C-mtool 会话） | 7.6.4 / 7.6.5 | 设计规定 | 条目本来就在 `WAITING_FOR_MTOOL_RULE`，不会进 worklist |
@@ -6180,11 +6258,11 @@ C 会话开始前必须全部满足。检查项由 `Preflight.ps1` 输出（§9�
 > **异议 1（位置）：`mtool-profiles\<item-id>.json` 不应放在 `D:\GameFlow\rules\` 下。**
 > `rules\` 按 §2 的目录布局是**进 Git** 的代码/规则区，而 mtool profile 里含 `game_root` 绝对路径、`target_exe`（常是日文或中文游戏名）、以及 `item_id` 与游戏标题的对应关系——这些是**用户私人游戏库的内容**，进 Git 与 §9 的隐私边界冲突（`.gameflow\` 那条「不存密码、账号、token」的克制，在这里被从侧门绕过了）。
 > 更根本的是**语义**：`engine-rules.json`、`container-types.json`、`netdisk-profiles.json` 是**跨条目复用的静态资产**，而 mtool profile 是**某一个游戏条目的一次性人工裁决记录**，它的生命周期与那个游戏完全一致（游戏删了 profile 就该没了）。
-> **建议**：移到 `D:\GameLib\games\<dirname>\.gameflow\mtool-profile.json`，或至少移到 `D:\GameLib\` 下的不进 Git 区；`rules\` 里只保留跨游戏复用的**引擎默认值模板**。
+> **建议**：移到 `D:\GameHub\games\<dirname>\.gameflow\mtool-profile.json`，或至少移到 `D:\GameHub\` 下的不进 Git 区；`rules\` 里只保留跨游戏复用的**引擎默认值模板**。
 > 本节已按契约原样写作 `D:\GameFlow\rules\mtool-profiles\<item-id>.json`，请主控裁决。
 >
 > **异议 2（职责悬空）：百度网盘残留后缀的「去后缀」动作，在当前契约下无人可执行。**
-> 不变量 I5 规定「执行体 A 永不写 `games\<dirname>\` 以外的路径」，而残留文件在 `D:\GameLib\_inbox\`；7.2.2 规定 C 不改名；§6 的 B 的职责起点是 `PREFLIGHT_OK` 之后的归档处理。于是 R-11 只能由**用户手工**完成，这在百度是主力通道时可能相当频繁。
+> 不变量 I5 规定「执行体 A 永不写 `games\<dirname>\` 以外的路径」，而残留文件在 `D:\GameHub\_inbox\`；7.2.2 规定 C 不改名；§6 的 B 的职责起点是 `PREFLIGHT_OK` 之后的归档处理。于是 R-11 只能由**用户手工**完成，这在百度是主力通道时可能相当频繁。
 > 建议主控在 §5 或 §6 里显式指定一个承接方（我倾向 B：它本来就带密码、带提权、且是人触发的），或明确接受「这一步永远手工」并写进 §7.7 的频次列。本节已按后者写作。
 
 
@@ -6271,10 +6349,11 @@ New-Batch   Invoke-Work   （无脚本：       Get-BatchReport    Invoke-Sweep
 | 作业 | `gf-work` | `Invoke-Work.ps1` | `-BatchId <slug> [-ItemId <slug>]` | ✅ | ✅ **唯一** | ✅ | ✅ |
 | 批次对账 | `gf-reconcile` | `Get-BatchReport.ps1` | `-BatchId <slug>` | ❌ | ❌ | ❌ | ❌ |
 | 前台处理 | `gf-foreground` | 无（GUI） | `-BatchId <slug>`（语义参数） | ✅ | ❌ | ❌ | ❌ |
+| 投递 | `gf-deliver` | `Invoke-Deliver.ps1` | `-BatchId <slug> [-ItemId <slug>] -To <profile-key>` | ❌ | ❌ | ✅ | ❌ |
 
 ##### （1）新建批次 `gf-new-batch`
 
-- **干什么**：把人给的一组资源页 / 网盘链接整理成 `D:\GameLib\batches\<batch-id>.json`（模板见 `templates\batch.template.json`，字段见 §3），为每个条目生成 `item.id` slug。**只生成清单**：不建游戏目录、不访问网络、不下载。
+- **干什么**：把人给的一组资源页 / 网盘链接整理成 `D:\GameHub\batches\<batch-id>.json`（模板见 `templates\batch.template.json`，字段见 §3），为每个条目生成 `item.id` slug。**只生成清单**：不建游戏目录、不访问网络、不下载。
 - **输入**：命令行只有 `-BatchId <slug>`。**标题、URL、密码引用这些自由格式数据不走命令行**——由 skill 引导 Codex 直接把 JSON 写进 `batches\<batch-id>.json`，脚本负责校验（schema、slug 唯一性、`expected_parts` 类型）。这是 §8.2 R3 的第一处应用。
 - **前置状态**：批次不存在。同名已存在 → **拒绝，不覆盖**（退出码 2）。
 - **副作用**：写 1 个文件（`batches\<batch-id>.json`）。不碰 `games\`。
@@ -6298,14 +6377,14 @@ New-Batch   Invoke-Work   （无脚本：       Get-BatchReport    Invoke-Sweep
 - **副作用**：本项目**唯一**会删除文件的操作；把密码明文经 `-p` 送上命令行（同机进程与系统审计可见，无法消除，见 §9 诚实局限）；Defender 预检需要提权（`MpCmdRun` 官方明写需提权）。
 - **失败姿态**：12 条判据任一不满足 → **保留所有压缩包**，落对应停机态（`WAITING_FOR_PASSWORD` / `EXTRACT_FAILED_AMBIGUOUS` / `CORRUPT` / …），写日志，继续下一个条目。
 - **人在场**：**必须**，两条硬理由：① DPAPI vault 只在**创建它的交互登录身份**下可解，无人值守的 S4U 任务解不开（§8.8.10）；② `MpCmdRun` 需提权，与 `-RunLevel Limited` 的计划任务冲突。
-- **不设人工确认闸门**（2026-09-14 改）。删除的安全性由两条**机器可验证**的东西保证：§6.8 的 D1–D12 十二条与条件（正确性判据）与 **I6 的路径围栏**（删除目标必须在 `library_root` 之内，逐次断言）。一次覆盖整批的人工确认对这两类风险都不起作用——它既验证不了 D1–D12，也发现不了路径算错，而且会被疲劳性地点掉。skill 仍在**结束摘要**里逐条列出删了什么、SHA-256 是多少。
+- **不设人工确认闸门**（2026-09-14 改）。删除的安全性由两条**机器可验证**的东西保证：§6.8 的 D1–D12 十二条与条件（正确性判据）与 **I6 的路径围栏**（删除目标必须在 `hub_root` 之内，逐次断言）。一次覆盖整批的人工确认对这两类风险都不起作用——它既验证不了 D1–D12，也发现不了路径算错，而且会被疲劳性地点掉。skill 仍在**结束摘要**里逐条列出删了什么、SHA-256 是多少。
 
 ##### （4）批次对账 `gf-reconcile`
 
 - **干什么**：**只读**。**重新生成 / 回填**对账报告（常规报告由 A 在每轮巡检末尾产出，见（2））：从 `events.jsonl` / `state.json` 派生每条目当前状态、需要人做什么、本批次至今删了什么。用在「想立刻看一眼而不等下一轮巡检」或「A 那轮的报告需要重算」时。
 - **输入**：`-BatchId <slug>`。
 - **前置状态**：批次清单存在。
-- **副作用**：只写 `D:\GameLib\_reports\<batch-id>-<seq>.md`。**不改任何状态、不追加任何事件。**
+- **副作用**：只写 `D:\GameHub\_reports\<batch-id>-<seq>.md`。**不改任何状态、不追加任何事件。**
 - **失败姿态**：批次不存在 → 退出码 2。**某个条目的 `state.json` 不可解析时，报告把该条目标注为"状态不可读"并给出 §4 的恢复指引，然后继续渲染其余条目**——对账绝不能因为一个条目坏了就整体失败（这不引入新状态名，只是报告里的一个单元格）。
 - **人在场**：否（输出是给人看的，但生成过程不需要人）。
 
@@ -6315,7 +6394,7 @@ New-Batch   Invoke-Work   （无脚本：       Get-BatchReport    Invoke-Sweep
 - **脚本**：**无**。C 的动作是 GUI 操作（内置浏览器 + Computer Use），不是脚本。它读 `batches\<batch-id>.json` 与最近一份报告决定做什么，并把 `expected_parts`（资源页上一共几个下载链接 / 几个分卷）等信息**写回批次清单**——这是 §5.3 G6 唯一可靠的自动检测输入。
 - **前置状态**：人在电脑前，且机器可以被独占。
 - **副作用**：**独占前台鼠标键盘**。官方原文：*"在 Windows 上，计算机使用在活动桌面运行。**您无法在它于后台运行的同时继续使用同一 Windows 会话**"*；*"锁定状态下使用适用于 macOS。在 Windows 上，计算机使用在前台运行。"*【官方】https://learn.chatgpt.com/zh-Hans/docs/computer-use
-  下载文件落到 `D:\GameLib\_inbox`（内置浏览器**没有按任务/按游戏的下载目录**，§8），由 A 认领归位。
+  下载文件落到 `D:\GameHub\_inbox`（内置浏览器**没有按任务/按游戏的下载目录**，§8），由 A 认领归位。
 - **失败姿态**：任何登录、验证码、人机验证、会员/付费环节 → 停下交给人（不绕过）；MTool 目标 exe 歧义或新引擎 → `WAITING_FOR_MTOOL_RULE`；加载失败 → `MTOOL_FAILED`。
 - **人在场**：**必须**，且必须**可随时中断**（E1：这是主力机）。skill 正文要求把工作切成"一个资源页/一个游戏"的粒度，每完成一个就写回清单，使中断只损失当前一小步。
 
@@ -6348,7 +6427,7 @@ Codex agent
 | # | 规则 | 理由 |
 |---|---|---|
 | **R1** | 入口只接收**无空格、无歧义的受限 token**。`BatchId` 必须匹配 §3.2.1 的 `batch_id` 正则、`ItemId` 必须匹配 §3.2.2 的 `item_id` 正则（**本节不另定正则**）。脚本第一件事就是正则校验，不匹配立即退出码 2 | 5.1 拼字符串的唯一安全解法是"参数里根本不存在需要引号的字符" |
-| **R2** | **一切路径由脚本自己解析**。库根、代码根是 `scripts\lib\` 里的路径模块中的常量，是全项目**唯一**出现绝对盘符的地方；脚本自身位置用 `$PSScriptRoot` 反推 `D:\GameFlow` | 换盘符时只改一处；Codex 永远不需要在命令行里说出一个路径 |
+| **R2** | **一切路径由脚本自己解析**。枢纽根、代码根是 `scripts\lib\` 里的路径模块中的常量，是全项目**唯一**出现绝对盘符的地方；脚本自身位置用 `$PSScriptRoot` 反推 `D:\GameFlow` | 换盘符时只改一处；Codex 永远不需要在命令行里说出一个路径 |
 | **R3** | **禁止**把标题、URL、密码、任意路径作为入口参数。自由格式数据一律经文件（批次清单 JSON）或 vault | 见 R1；密码另有 §9 的暴露面理由 |
 | **R4** | 只用 `pwsh.exe -File`，**不用 `-Command`** | `-Command` 会让 pwsh 再做一次 PowerShell 解析，两层解析叠加；`-File` 后的参数按字面传给脚本【社区，理由自明】 |
 | **R5** | 所有外部工具（`7z.exe`、`pwsh.exe`、`MpCmdRun.exe`）用**全路径**，或经 Preflight 确认在 `PATH` 里 | `-NoProfile` ⇒ `$PROFILE` 里的别名/函数在 Codex 面前**不存在**【官方 + 实测】 |
@@ -6367,7 +6446,7 @@ Codex agent
 
 **本表是入口参数的封闭清单。** 任何脚本新增参数必须先改这张表。两条附加硬规则：
 
-- **禁止把任意路径作为入口参数**（R2/R3）。测试用别的库根时走 `-Profile test`——由脚本从配置里解析出测试库根，**不接收 `-LibraryRoot` 这类自由路径**。理由与 R1 同源：最外层永远是 5.1 的解析规则，一个带空格或中文的路径在那里就已经被拆坏了。
+- **禁止把任意路径作为入口参数**（R2/R3）。测试用别的枢纽根时走 `-Profile test`——由脚本从配置里解析出测试枢纽根，**不接收 `-LibraryRoot` 这类自由路径**。理由与 R1 同源：最外层永远是 5.1 的解析规则，一个带空格或中文的路径在那里就已经被拆坏了。
 - `-Reason <token>` 只接收**受限 token**（`^[a-z0-9][a-z0-9-]{0,31}$`），自由文本理由写进批次条目的 `_note`，不走命令行。
 
 **进程退出码**（只表达"进程层结果"，与 §4 的状态机是两套东西；条目结果永远看状态与报告）：
@@ -6391,7 +6470,7 @@ Codex agent
 ```
 Codex project = D:\GameFlow        ← workspace-write 沙盒默认只允许写这里（代码、规则、skills）
         ✗ 写不进去
-D:\GameLib\                        ← 所有真实数据：批次、状态、事件、游戏、报告
+D:\GameHub\                        ← 所有真实数据：批次、状态、事件、游戏、报告
 ```
 
 官方对 Windows 原生沙盒的表述：*"When you run Codex natively on Windows, agent mode uses a Windows sandbox to **block filesystem writes outside the working folder** and prevent network access without your explicit approval."*【官方】https://learn.chatgpt.com/docs/windows/windows-sandbox
@@ -6405,7 +6484,7 @@ D:\GameLib\                        ← 所有真实数据：批次、状态、�
 sandbox_mode = "workspace-write"
 
 [sandbox_workspace_write]
-writable_roots = ["D:\\GameLib"]
+writable_roots = ["D:\\GameHub"]
 
 [windows]
 sandbox = "elevated"          # 官方首选；需要管理员批准的一次性安装步骤
@@ -6417,11 +6496,11 @@ TOML 里的表写法是上述 key path 的机械展开；**在目标机上应以
 三条必须知道的边界：
 
 1. **`<writable_root>/.codex` 会被递归置为只读**：*"`<writable_root>/.codex` is protected as read-only when it exists as a directory. Protection is recursive."*【官方】https://learn.chatgpt.com/docs/agent-approvals-security
-   我们的状态目录叫 `.gameflow`，**不冲突**。反过来这条也是一条禁令：**不要在 `D:\GameLib` 下建 `.codex` 目录**（例如"顺手放个项目级 rules"），否则整棵库瞬间只读。
+   我们的状态目录叫 `.gameflow`，**不冲突**。反过来这条也是一条禁令：**不要在 `D:\GameHub` 下建 `.codex` 目录**（例如"顺手放个项目级 rules"），否则整棵库瞬间只读。
 2. **不要用 `danger-full-access` 绕过。** 沙盒是本项目"A 永不越界"（I5）的唯一机器级保障；用 full access 换方便，等于把 I5 降级成"脚本自觉"。
 3. **`writable_roots` 在 Windows 原生沙盒下是否同样生效，属【待测】。** 官方 windows-sandbox 文档描述的是 Windows 专有的沙盒实现（低权限沙盒用户 / 受限 token + ACL 边界），而 `sandbox_workspace_write.*` 是通用配置族，**两者的关系文档里没有交代**。
    - 不验证的后果：A/B 在 Codex 会话里一步都跑不动，且**失败表现可能是一个普通的"拒绝访问"异常**，看起来像脚本 bug 而不是沙盒拦截，人会往错的方向排查很久。
-   - 验证方法：配好后在 Codex 会话里让 agent 执行一次最小写入（`New-Item` 一个临时文件到 `D:\GameLib\_reports\`），看是被写入、被拒绝、还是弹审批。
+   - 验证方法：配好后在 Codex 会话里让 agent 执行一次最小写入（`New-Item` 一个临时文件到 `D:\GameHub\_reports\`），看是被写入、被拒绝、还是弹审批。
 
 #### 8.3.3 逃生路线（这条决定了整个设计的抗风险度）
 
@@ -6475,10 +6554,10 @@ Windows 上 agent 跑的是 `powershell.exe -NoProfile …`（§8.2.1），而�
 
 ```
 # ① 裸命令：确认规则语法本身是对的
-codex execpolicy check --pretty --rules %USERPROFILE%\.codex\rules\default.rules -- 7z t D:\GameLib\_stg\demo\a.7z
+codex execpolicy check --pretty --rules %USERPROFILE%\.codex\rules\default.rules -- 7z t D:\GameHub\_stg\demo\a.7z
 
 # ② PowerShell 包一层：这是"rules 会不会拆 PowerShell"的核心问题
-codex execpolicy check --pretty --rules %USERPROFILE%\.codex\rules\default.rules -- powershell.exe -NoProfile -Command "7z t D:\GameLib\_stg\demo\a.7z"
+codex execpolicy check --pretty --rules %USERPROFILE%\.codex\rules\default.rules -- powershell.exe -NoProfile -Command "7z t D:\GameHub\_stg\demo\a.7z"
 
 # ③ 我们真正会跑的形状：入口脚本
 codex execpolicy check --pretty --rules %USERPROFILE%\.codex\rules\default.rules -- pwsh.exe -NoProfile -File D:\GameFlow\scripts\Invoke-Work.ps1 -BatchId demo
@@ -6534,7 +6613,7 @@ Codex 桌面 App 的计划任务能力**是真实存在的**（*"scheduled tasks
 
 对本项目的三条推论：
 
-- `D:\GameLib` **不进 Git** ⇒ 没有 project root ⇒ 只检查 cwd 那一层 ⇒ `D:\GameLib\AGENTS.md` **只有当 cwd 恰好是它时才加载**。**不要把关键约束只放在那里。**
+- `D:\GameHub` **不进 Git** ⇒ 没有 project root ⇒ 只检查 cwd 那一层 ⇒ `D:\GameHub\AGENTS.md` **只有当 cwd 恰好是它时才加载**。**不要把关键约束只放在那里。**
 - `D:\GameFlow` 是 Git 仓库 ⇒ `D:\GameFlow\AGENTS.md` 会被加载。**它是本项目唯一权威的指令文件。**
 - 32 KiB 上限 ⇒ AGENTS.md 只写**红线**，流程与操作细节进 skills（§8.1）与本 SPEC。往里塞教程会先撑爆预算，把后面的红线挤掉。
 
@@ -6551,7 +6630,7 @@ Codex 桌面 App 的计划任务能力**是真实存在的**（*"scheduled tasks
 | 5 | **7z 只能经 `scripts\lib\` 的 `Invoke-SevenZip` 调用**，禁止在会话里直接敲 `7z …` | §8.8.7 |
 | 6 | **绝不把密码、账号、带 token 的下载 URL 写进** `.gameflow\`、日志、报告、批次清单或 Git | §9 / §3 |
 | 7 | **不新增状态名。** §4 的状态集是封闭的；遇到没有对应状态的情况，停下问人，不要发明一个 | §4 |
-| 8 | **不在 `D:\GameLib` 下创建 `.codex` 目录**（会让整棵库被沙盒置为递归只读） | §8.3.2 |
+| 8 | **不在 `D:\GameHub` 下创建 `.codex` 目录**（会让整棵库被沙盒置为递归只读） | §8.3.2 |
 | 9 | **不修改 `events.jsonl` 的既有行**（append-only，唯一真相）。`state.json` 坏了就重建，不要手改 | I2 / §8.8.5 |
 
 第 5 条的三个理由值得在 AGENTS.md 里直接写出来，否则模型会觉得"我直接敲一条 7z 更快"：**① stdin 必须关（否则加密包永久挂在 `Enter password:`）② 必须有超时 ③ `$LASTEXITCODE` 必须被立即捕获且判据是严格 `-eq 0`。** 手敲的命令这三条一条都不满足。
@@ -6689,8 +6768,8 @@ $lock = [System.IO.File]::Open($lockLiteralPath, 'OpenOrCreate', 'ReadWrite', 'N
 **锁粒度**（与 I4「每个游戏条目独立推进」对齐）：
 
 ```
-D:\GameLib\batches\<batch-id>.lock              批次级：整批的入口互斥
-D:\GameLib\games\<dirname>\.gameflow\.lock      条目级：真正的并发单位
+D:\GameHub\batches\<batch-id>.lock              批次级：整批的入口互斥
+D:\GameHub\games\<dirname>\.gameflow\.lock      条目级：真正的并发单位
 ```
 
 **为什么是它**：进程死亡时 OS 自动关闭句柄并释放锁（无陈旧锁问题）；句柄属于进程不属于线程（无线程亲和性问题）；**文件系统没有会话隔离**，所以计划任务与 Codex 交互会话天然互斥；5.1/7.x 行为一致、零依赖。
@@ -6706,7 +6785,7 @@ D:\GameLib\games\<dirname>\.gameflow\.lock      条目级：真正的并发单�
 
 **四条已知的坑**（全部【官方】）：
 
-1. **5.1 拼字符串**：参数数组被 *"joined into a single string with each parameter separated by a space"*，**不逐参数加引号** → `D:\GameLib\games\游戏 A\x.rar` 被 7z 当成两个参数。
+1. **5.1 拼字符串**：参数数组被 *"joined into a single string with each parameter separated by a space"*，**不逐参数加引号** → `D:\GameHub\games\游戏 A\x.rar` 被 7z 当成两个参数。
 2. **`Start-Process -ArgumentList` 数组形式是陷阱，不是解决方案**：官方自述 *"The cmdlet joins the array into a single string with each element of the array separated by a single space."*、*"If parameters or parameter values contain a space or quotes, they need to be surrounded with escaped double quotes."*，并建议 *"use a single ArgumentList value containing all the arguments and any needed quote characters."*——等于把转义责任推回给调用方。**全项目禁用。**
 3. **`ProcessStartInfo.ArgumentList` 才是零歧义的**：*"Strings added to the list don't need to be previously escaped."*、*"ArgumentList escapes the provided arguments…"*。但它的 Applies-to 里**没有任何 `netframework-*`** ⇒ 5.1 用不了 ⇒ 这是"必须由 `pwsh.exe` 执行脚本"的最硬理由。
 4. **`--%` 完全用不上**：它只展开 `%ENVVAR%`，*"Other than `%variable%` environment-variable references, you can't embed any other dynamic elements in the command."*，且遇到换行或管道符就失效。本项目的路径与密码都来自 PowerShell 变量。**全项目禁用。**
@@ -6810,7 +6889,7 @@ $set = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew `
 | # | 事实 | 影响 |
 |---|---|---|
 | 1 | `Interactive` 要求**该用户保持登录** | 锁屏不影响（会话仍在），注销 / 重启未登录则不跑。E1 下这个前提本来就成立 |
-| 2 | `-RunLevel Highest` 让任务**免 UAC 提示地以管理员身份运行** | 这是一次真实的权限授予。缓解是 **I6 的路径围栏**——提权后能删的东西仍被钉死在 `library_root` 之内 |
+| 2 | `-RunLevel Highest` 让任务**免 UAC 提示地以管理员身份运行** | 这是一次真实的权限授予。缓解是 **I6 的路径围栏**——提权后能删的东西仍被钉死在 `hub_root` 之内 |
 | 3 | B 会在你用电脑时突然开始大量磁盘 I/O | 想避开就加 `-RunOnlyIfIdle`，代价是批次完成时间不可预测 |
 
 **仍然可以只用手动触发**——`gf-work` skill 与计划任务共用同一个入口脚本，互斥由 §8.8.6 的文件锁保证。**自动与手动不是二选一，是同一个入口的两条触发路径**。
@@ -6825,7 +6904,7 @@ $set = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew `
 
 **绝不允许出现**：密码明文、`password_ref` 的**值**（键名可以）、带 token 的下载 URL、绝对路径。
 
-**报告生成**：永远从 `events.jsonl` / `state.json` **派生**，从不手工维护，**随时可重新生成**，落 `D:\GameLib\_reports\<batch-id>-<seq>.md`。呈现层是本项目唯一"可以不吝啬"的地方，四条要求：
+**报告生成**：永远从 `events.jsonl` / `state.json` **派生**，从不手工维护，**随时可重新生成**，落 `D:\GameHub\_reports\<batch-id>-<seq>.md`。呈现层是本项目唯一"可以不吝啬"的地方，四条要求：
 
 1. **每个停机态都必须给出下一个人类动作**——一句可以照抄的命令，或一句明确的判断。"停在明确状态"如果没有可执行的下一步，人照样卡住。
 2. **每份报告顶部显式声明本次的删除情况**：「本次未删除任何文件」或「本次删除了 N 个源包（清单如下，SHA-256 已记入 manifest）」。C3+C4 下这是用户最焦虑的点，不能靠翻日志确认。
@@ -6948,7 +7027,7 @@ E6 有一个专门针对本项目的陷阱：PSReadLine 有一条过滤，匹配
 | ✅ **可控** | **M1** 明文不进批次清单（`batches\<batch-id>.json` 只写 `password_ref` 键名） | §3 |
 | ✅ | **M2** 明文不进任何日志：`events.jsonl` / `state.json` / `manifest.json` 里**不存在**密码字段；脚本文本里密码只以变量形式出现（`"-p$plain"`） | §3 + 本节 M4 |
 | ✅ | **M3** 明文不进报告：`_reports\` 只写"已尝试候选数 / 命中的 `password_ref` 键名 / 当前 ACP"，**不写候选本身** | §6 + 本节 |
-| ✅ | **M4** 明文不进 Git：`vault.clixml` 在 `%LOCALAPPDATA%\GameFlow\`，**不在** `D:\GameFlow`（Git 库）也**不在** `D:\GameLib` 内 | §2 |
+| ✅ | **M4** 明文不进 Git：`vault.clixml` 在 `%LOCALAPPDATA%\GameFlow\`，**不在** `D:\GameFlow`（Git 库）也**不在** `D:\GameHub` 内 | §2 |
 | ✅ | **M5** 明文不进 shell 历史：禁止交互式手敲带 `-p` 的命令，一律经脚本 | 本节，写进 §8 的调用约定 |
 | ✅ | **M6** 7z 输出脱敏后才落盘 | 本节 9.1.4 |
 | ✅ | **M7** 用完归零（`ZeroFreeBSTR`），不把明文回传给调用方 | §6 |
@@ -7252,16 +7331,16 @@ C4 的语义仍然满足：源包在游戏目录里**自动消失、无需任何
 
 #### 9.8.4 排除项：只排两条，绝不排整个库
 
-> **不要为了流程顺畅把整个 `D:\GameLib` 加进 Defender 排除项。** 那等于对**最可能带毒的目录**关掉实时保护，是一笔**净负面**的安全交易。官方自己的话是：「You usually don't need to define exclusions for Microsoft Defender Antivirus.」【官方】
+> **不要为了流程顺畅把整个 `D:\GameHub` 加进 Defender 排除项。** 那等于对**最可能带毒的目录**关掉实时保护，是一笔**净负面**的安全交易。官方自己的话是：「You usually don't need to define exclusions for Microsoft Defender Antivirus.」【官方】
 
 允许的排除项**一共只有两条**，每条必须是用户一次性明示、写进日志、可回滚：
 
 | # | 排除路径 | 理由 | 归属 |
 |---|---|---|---|
-| **X1** | `D:\GameLib\_stg\` | 解压中转区，避免实时保护在解压途中隔离文件造成假失败。**产物在移出 `_stg` 之前必须过一次 `-DisableRemediation` 显式扫描**（它忽略排除目录，所以这一步不受 X1 影响） | 阶段一（执行体 B） |
+| **X1** | `D:\GameHub\_stg\` | 解压中转区，避免实时保护在解压途中隔离文件造成假失败。**产物在移出 `_stg` 之前必须过一次 `-DisableRemediation` 显式扫描**（它忽略排除目录，所以这一步不受 X1 影响） | 阶段一（执行体 B） |
 | **X2** | `<MTool 安装目录>` | MTool 的 `version.dll` **哈希随游戏实例变化**（Kaspersky 版主确认「文件在不同游戏实例下哈希不同，导致逐个加排除项无效」）→ **SHA-256 白名单在原理上就不可能工作**，只能目录级排除【官方论坛帖】https://forum.kaspersky.com/topic/false-positive-mtool-translation-tool-components-versiondll-incorrectly-flagged-as-dllhijack-58061/ | 阶段二（执行体 C） |
 
-**明确不排除**：`D:\GameLib\`（库根）、`D:\GameLib\games\`（游戏目录）、`D:\GameLib\_inbox\`。游戏目录保留实时保护。
+**明确不排除**：`D:\GameHub\`（枢纽根）、`D:\GameHub\games\`（游戏目录）、`D:\GameHub\_inbox\`。游戏目录保留实时保护。
 
 放行白名单分两套，**不能混**：
 
@@ -7395,17 +7474,17 @@ version ≥ 26.02              → V-OK     正常
 | **PF-09** | **Beta UTF-8** 状态 | 同 PF-08：`ACP == 65001` 即已勾选「Beta：使用 Unicode UTF-8 提供全球语言支持」 | 记录 | 只记录 + WARN。勾选后系统 ANSI 代码页从 GBK(936) 变成 UTF-8(65001)，**用 GBK 环境打的中文密码包就打不开**，含中文名的 WinRAR 包也会乱码。中文密码全败时报告里必须显示这一项 | WARN | 【社区】资源站教程原话「语言里的区域关闭 beta 版本」+ 编码机理【实测·macOS Python/Info-ZIP 造包，字节层事实可外推】 |
 | **PF-10** | `LongPathsEnabled` | `Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' -Name LongPathsEnabled` | 记录 | **只记录，不作为放宽 MAX_PATH 预算的依据**。§2 的预算表（`games\` 前缀 17 字符、建目录上限 248）照常执行 | INFO | 【官方】注册表位置；**【待测】** `LongPathsEnabled=1` 时 `powershell.exe`/`pwsh.exe` 对 >260 路径的实际行为（还要 exe manifest 声明 `longPathAware`，PS 7.x 曾缺这个 manifest）。不实测的后果：只能按"从源头压短路径"走——**这也正是本 SPEC 的默认取舍，所以这条不实测不阻塞任何设计** |
 | **PF-11** | `Get-ExecutionPolicy -List` **全部作用域** | 直接读 | `MachinePolicy` / `UserPolicy` 为 `Undefined` | 若 `MachinePolicy` 或 `UserPolicy` **非** Undefined（GPO 强制）→ **FAIL**：`-ExecutionPolicy Bypass` 参数**无效**，必须给用户明确处置路径（联系域管，或改用签名脚本）。若只是 `LocalMachine=Restricted` → WARN，`powershell -ExecutionPolicy Bypass -File …` 在**进程级**可绕开 | FAIL / WARN | 【官方】cmdlet；GPO 优先级【社区】。**注意**：不要照抄"默认 Restricted 所以跑不起来"这种断言——很多机器早已被设成 `RemoteSigned` |
-| **PF-12** | 库根**不在** OneDrive / `Program Files` 下 | 路径前缀比对 `$env:OneDrive`、`$env:ProgramFiles`、`$env:ProgramFiles(x86)`；并检查库根是否被 OneDrive"移动的文件夹"覆盖 | 都不在 | **FAIL**。OneDrive 有社区证据导致 MTool inject 失败；`Program Files` 写不进 `version.dll`。修复：把库根移到普通数据盘目录 | **FAIL** | 【社区】https://bbs.mtool.app/topic/949/ ；`Program Files` 的写权限限制【社区】 |
+| **PF-12** | 枢纽根**不在** OneDrive / `Program Files` 下 | 路径前缀比对 `$env:OneDrive`、`$env:ProgramFiles`、`$env:ProgramFiles(x86)`；并检查枢纽根是否被 OneDrive"移动的文件夹"覆盖 | 都不在 | **FAIL**。OneDrive 有社区证据导致 MTool inject 失败；`Program Files` 写不进 `version.dll`。修复：把枢纽根移到普通数据盘目录 | **FAIL** | 【社区】https://bbs.mtool.app/topic/949/ ；`Program Files` 的写权限限制【社区】 |
 | **PF-13** | 磁盘余量 | `[System.IO.DriveInfo]::new('D:\').AvailableFreeSpace` | ≥ `min_free_headroom`（§6 参数） | 低于阈值 → **FAIL** 于执行体 B（不开新的解压），A 照常巡检并落 `BLOCKED_RESOURCE` | FAIL(B) | 【官方】DriveInfo |
 | **PF-14** | **vault 存在性与身份可解性** | `Test-Path %LOCALAPPDATA%\GameFlow\vault.clixml`；存在则尝试解一条**哨兵条目** | 存在且当前身份能解开 | 不存在 → INFO（首次使用正常），并打印 9.3 的运维警告**一次**。存在但解不开 → **FAIL**：身份不匹配（换过账户/换过机器/被 S4U 任务创建过），给出"用当前账户重建 vault"的路径 | FAIL / INFO | 【社区】DPAPI 绑定；**【待测】§11 跨用户/跨机的实际表现** |
 | **PF-15** | **命令行审计状态**（决定 9.1 的暴露程度） | `auditpol /get /subcategory:"Process Creation"`；注册表 `ProcessCreationIncludeCmdLine_Enabled`；`Get-Service Sysmon*`；枚举已知 EDR 服务名 | 记录 | **只记录，不阻断。** 若任一为开启 → 报告里显示一行："本机开启了进程命令行审计 / Sysmon，归档密码会进入审计记录（见 §9.1）"。**GameFlow 绝不为了降低暴露而去关闭审计**——那是拿系统安全换项目便利 | INFO / WARN | 【社区】探测方法来自调研；**该机实际状态【待测】** |
-| **PF-16** | Defender 状态与现有排除项 | `Get-MpComputerStatus`（实时保护是否开启）；`Get-MpPreference` 的 `ExclusionPath`；`MpCmdRun.exe -CheckExclusion -Path <_stg>` | 实时保护开启；排除项**至多**是 X1/X2 两条 | 若发现整个 `D:\GameLib` 或 `games\` 在排除项里 → **WARN 并显著提示**这是净负面交易（9.8.4），给出 `Remove-MpPreference` 回滚命令。实时保护关闭 → WARN（我们的预检还能跑，但纵深没了） | WARN | 【官方】`-CheckExclusion` 输出语义；`Get-MpComputerStatus` 字段语义【社区】 |
+| **PF-16** | Defender 状态与现有排除项 | `Get-MpComputerStatus`（实时保护是否开启）；`Get-MpPreference` 的 `ExclusionPath`；`MpCmdRun.exe -CheckExclusion -Path <_stg>` | 实时保护开启；排除项**至多**是 X1/X2 两条 | 若发现整个 `D:\GameHub` 或 `games\` 在排除项里 → **WARN 并显著提示**这是净负面交易（9.8.4），给出 `Remove-MpPreference` 回滚命令。实时保护关闭 → WARN（我们的预检还能跑，但纵深没了） | WARN | 【官方】`-CheckExclusion` 输出语义；`Get-MpComputerStatus` 字段语义【社区】 |
 | **PF-17** | `MpCmdRun.exe` 的**绝对路径** | 依次探 `%ProgramFiles%\Windows Defender\MpCmdRun.exe` 与 `%ProgramData%\Microsoft\Windows Defender\Platform\<版本>\MpCmdRun.exe`（后者更新，**默认不在 PATH**） | 找到一个存在的路径 | 找不到 → **FAIL** 于执行体 B（没有 Defender 预检就不允许把产物落地；C 级分流会让每个条目都停在 `THREAT_SUSPECTED`，那不是可用的状态） | FAIL(B) | 【官方】两个路径均见 MS Learn |
 | **PF-18** | **提权能力** | 当前进程是否 elevated；若否，能否弹 UAC | 执行体 B 的会话可提权 | `MpCmdRun` **官方明写需要提权运行**。不可提权 → FAIL(B)，并说明这就是 Defender 预检归属 B 而非计划任务 A 的原因 | FAIL(B) | 【官方】「You need to run MpCmdRun in an elevated Command Prompt」https://learn.microsoft.com/en-us/defender-endpoint/command-line-arguments-microsoft-defender-antivirus |
 | **PF-19** | **MTool 安装位置与签名状态** | 定位安装目录；`Get-AuthenticodeSignature <MTool 主程序>`；检查是否落在 OneDrive / `Program Files` 下 | 目录不在 OneDrive 下；签名状态**记录**下来 | 位置不合规 → WARN（会导致 inject 失败【社区】）。签名状态直接决定执行体 C 能不能自动操作 MTool：**未签名 → 落 `computer_use.default_app_access` 兜底；签名存在但无法明确验证 → 直接被 block**【官方 Codex 配置参考原文】。签名不明 → WARN + 提示 C 可能无法自动打开 MTool | WARN | 【官方】Codex 的 `computer_use.windows.exes` 匹配语义；**MTool 实际签名状态【待测】§11** |
 | **PF-20** | **目录可写性** | 对 `_inbox` / `_stg` / `_reports` / `batches` / `games` 各建一个临时文件再删（**不是查 ACL**） | 全部成功 | 任一失败 → **FAIL**，报出具体目录 | **FAIL** | 设计决策：ACL 计算在 Windows 上不可靠，实测写入才算数 |
 | **PF-21** | **计划任务的 LogonType** | `Get-ScheduledTask` → `Principal.LogonType` | **不是** `S4U`、不是 `ServiceAccount` | 是 S4U/SYSTEM → **FAIL**：那样的任务解不开 DPAPI vault（9.3 的 V4/V5）。不过按 §2，A 本来就不碰密码，所以这条只在有人把 B 也塞进计划任务时才会触发——**探测它就是为了防这个** | FAIL | 【官方】https://learn.microsoft.com/en-us/windows/win32/taskschd/principal-logontype |
-| **PF-22** | **Codex 双根沙盒配置** | 读 Codex 配置里的 `sandbox_workspace_write.writable_roots` 是否包含 `D:\GameLib` | 包含 | 不包含 → **FAIL** 于 Codex 触发路径（project 是 `D:\GameFlow`、数据在 `D:\GameLib`，不配就第一步写文件就失败） | FAIL(Codex) | 【官方】配置键存在；**【待测】§11 沙盒的实际边界与 Windows 上的配置文件路径** |
+| **PF-22** | **Codex 双根沙盒配置** | 读 Codex 配置里的 `sandbox_workspace_write.writable_roots` 是否包含 `D:\GameHub` | 包含 | 不包含 → **FAIL** 于 Codex 触发路径（project 是 `D:\GameFlow`、数据在 `D:\GameHub`，不配就第一步写文件就失败） | FAIL(Codex) | 【官方】配置键存在；**【待测】§11 沙盒的实际边界与 Windows 上的配置文件路径** |
 | **PF-23** | Pester 版本 | `Get-Module Pester -ListAvailable` | 记录 | INFO。Windows 10/11 预装的是 **3.4.0**（语法不兼容 Pester 5）→ §10 必须显式钉最低版本或零依赖自建 harness | INFO | 【社区】 |
 
 **探测清单里刻意**不**包含的项**：
@@ -7419,7 +7498,7 @@ version ≥ 26.02              → V-OK     正常
 Preflight 产出**两份**东西：
 
 **（1）完整报告** → `%LOCALAPPDATA%\GameFlow\preflight.json`
-与 vault 同目录，理由相同：这是**机器本地**的事实，既不该进 Git（`D:\GameFlow`），也不属于任何一个批次（`D:\GameLib\_reports\` 的命名契约是 `<batch-id>-<seq>.md`）。
+与 vault 同目录，理由相同：这是**机器本地**的事实，既不该进 Git（`D:\GameFlow`），也不属于任何一个批次（`D:\GameHub\_reports\` 的命名契约是 `<batch-id>-<seq>.md`）。
 
 ```jsonc
 {
@@ -7501,7 +7580,7 @@ Codex 触发路径            ·      ·      ·      ✖      ·      ·      �
 
 E3 给出的全部环境事实是一句话：「已装 **7-Zip 或 WinRAR/Bandizip**（没指明哪个）、已装 Windows 版 Codex、已在用 MTool」。
 
-在这句话上：§5 的 `7z l -slt` 只读预检假设了 `7z.exe` 存在；§6 的退出码判据假设了引擎是 7-Zip 而不是 WinRAR；§3.2A 的目录名 ACP 可表示性判定假设我们知道 ACP 是多少；§8 的落盘协议假设 `.gameflow` 与库同卷且是 NTFS；§6 的 Defender 预检假设 `MpCmdRun.exe` 存在且会话能提权；§7 假设库根不在 OneDrive 下。**这六个假设，一个都还没被证实。**
+在这句话上：§5 的 `7z l -slt` 只读预检假设了 `7z.exe` 存在；§6 的退出码判据假设了引擎是 7-Zip 而不是 WinRAR；§3.2A 的目录名 ACP 可表示性判定假设我们知道 ACP 是多少；§8 的落盘协议假设 `.gameflow` 与库同卷且是 NTFS；§6 的 Defender 预检假设 `MpCmdRun.exe` 存在且会话能提权；§7 假设枢纽根不在 OneDrive 下。**这六个假设，一个都还没被证实。**
 
 > **不做 PF-01..PF-23 这张清单，本 SPEC 的每一节都建在沙上。**
 
@@ -7580,10 +7659,10 @@ Preflight.ps1  执行体 A       执行体 B       删除 gate      执行体 C
 
 | 项 | 内容 |
 |---|---|
-| **范围** | ① 实现 `Preflight.ps1`（§9 规定的全部探测项），一次运行输出一份 JSON 快照；② 打掉 §11 的 P0 四条（#1 环境快照 / #2 沙盒可写性 / #3 `prefix_rule` 拆分语义 / #4 浏览器扩展前台占用）；③ 把 macOS 上已造好的 fixture 库拷到 `D:\GameFlow\tests\fixtures\` 并跑一遍"能不能在 Windows 上复现"（§10.2.4）；④ 建 `D:\GameFlow` 骨架与 Git 仓库、`D:\GameTst\` 测试库根 |
+| **范围** | ① 实现 `Preflight.ps1`（§9 规定的全部探测项），一次运行输出一份 JSON 快照；② 打掉 §11 的 P0 四条（#1 环境快照 / #2 沙盒可写性 / #3 `prefix_rule` 拆分语义 / #4 浏览器扩展前台占用）；③ 把 macOS 上已造好的 fixture 库拷到 `D:\GameFlow\tests\fixtures\` 并跑一遍"能不能在 Windows 上复现"（§10.2.4）；④ 建 `D:\GameFlow` 骨架与 Git 仓库、`D:\GameTst\` 测试枢纽根 |
 | **完成判据** | 见 §10.3.1（可验证，逐条） |
 | **依赖** | 无。这是唯一可以立刻开工的里程碑 |
-| **风险** | ① 探测发现只有 WinRAR/Bandizip 的 GUI、没有 `7z.exe` 命令行 → 需要补齐路径（§9 必须给出），这会推迟 M1 但不改设计；② §11 #3 若判定 `prefix_rule` 对 PowerShell 语义空白（`【待测】`，官方 rules 文档全文零提及 powershell/pwsh/cmd.exe），则"7z 免审批"写不出来，每次解压都要人点一次——**这不阻塞 M1**（A 由 Windows 任务计划触发，不经 Codex 审批面，见 D-10），但会显著劣化 B 的体感，必须在 M0 就知道；③ §11 #2 若沙盒无法写 `D:\GameLib`，Codex 侧的所有 skill 都要重新设计权限模型 |
+| **风险** | ① 探测发现只有 WinRAR/Bandizip 的 GUI、没有 `7z.exe` 命令行 → 需要补齐路径（§9 必须给出），这会推迟 M1 但不改设计；② §11 #3 若判定 `prefix_rule` 对 PowerShell 语义空白（`【待测】`，官方 rules 文档全文零提及 powershell/pwsh/cmd.exe），则"7z 免审批"写不出来，每次解压都要人点一次——**这不阻塞 M1**（A 由 Windows 任务计划触发，不经 Codex 审批面，见 D-10），但会显著劣化 B 的体感，必须在 M0 就知道；③ §11 #2 若沙盒无法写 `D:\GameHub`，Codex 侧的所有 skill 都要重新设计权限模型 |
 
 #### 10.1.4 M1 · 只读巡检（执行体 A）
 
@@ -7638,7 +7717,7 @@ L2 fixture 回归  对 tests\fixtures\ 里的**冻结样本**跑真实 7z.exe，
                 Encrypted / Offset / 本项目的判定结论）
                 → 秒~分钟级，每次提交跑
 
-L3 真机小样本    用户手上的 3-5 个真实包 + 独立测试库根，跑完整执行体
+L3 真机小样本    用户手上的 3-5 个真实包 + 独立测试枢纽根，跑完整执行体
                 → 分钟~小时级，每个里程碑出口跑一次
 ```
 
@@ -7661,18 +7740,18 @@ L3 真机小样本    用户手上的 3-5 个真实包 + 独立测试库根，�
 #### 10.2.3 测试库隔离（硬护栏，不是纪律）
 
 ```
-生产    library_root = D:\GameLib\     （§2/§3 写死，11 字符）
-测试    library_root = D:\GameTst\     （本节命名，根名 10 字符 —— 与生产**等长**）
+生产    hub_root = D:\GameHub\     （§2/§3 写死，11 字符）
+测试    hub_root = D:\GameTst\     （本节命名，根名 10 字符 —— 与生产**等长**）
 ```
 
-选 `D:\GameTst\` 而不是更短的名字，是因为**测试的 MAX_PATH 预算必须与生产完全等价**：库根短一个字符，测试就比生产宽松一个字符，路径超限的 bug 会在生产上首次暴露。`D:\GameTst\games\` = 17 字符，与 `D:\GameLib\games\` 逐字符相等。
+选 `D:\GameTst\` 而不是更短的名字，是因为**测试的 MAX_PATH 预算必须与生产完全等价**：枢纽根短一个字符，测试就比生产宽松一个字符，路径超限的 bug 会在生产上首次暴露。`D:\GameTst\games\` = 17 字符，与 `D:\GameHub\games\` 逐字符相等。
 
-> **已定**：`D:\GameTst\` 为测试专用库根，由 `-Profile test` 解析（§8.2.3）。§2.4 只持有「与生产库根等长」这条约束，具体名字由本节持有——库根是配置项，写进布局树会与此矛盾。生产路径不受影响。
+> **已定**：`D:\GameTst\` 为测试专用枢纽根，由 `-Profile test` 解析（§8.2.3）。§2.4 只持有「与生产枢纽根等长」这条约束，具体名字由本节持有——枢纽根是配置项，写进布局树会与此矛盾。生产路径不受影响。
 
 三条护栏，写进 `scripts\lib\` 而不是靠人记住：
 
-1. **入口拒绝**：所有测试入口一律传 **`-Profile test`**（§8.2.3；**不接收 `-LibraryRoot` 这类自由路径参数**——最外层永远是 5.1 的解析规则，带空格或中文的路径在那里就被拆坏了）。`test` profile 由脚本从配置解析出 `D:\GameTst`；若解析结果等于生产库根，**立即退出，不做任何 IO**（不是"警告后继续"）。
-2. **同卷约束**：`D:\GameTst\_stg\` 必须与 `D:\GameTst\games\` 同卷——`File.Replace` 跨卷抛异常（`【官方】` `ReplaceFileW` 文档，转引 §8.8）。因此测试库根与生产库根同在 `D:` 盘，这也顺带让测试跑在真实的文件系统语义上。
+1. **入口拒绝**：所有测试入口一律传 **`-Profile test`**（§8.2.3；**不接收 `-LibraryRoot` 这类自由路径参数**——最外层永远是 5.1 的解析规则，带空格或中文的路径在那里就被拆坏了）。`test` profile 由脚本从配置解析出 `D:\GameTst`；若解析结果等于生产枢纽根，**立即退出，不做任何 IO**（不是"警告后继续"）。
+2. **同卷约束**：`D:\GameTst\_stg\` 必须与 `D:\GameTst\games\` 同卷——`File.Replace` 跨卷抛异常（`【官方】` `ReplaceFileW` 文档，转引 §8.8）。因此测试枢纽根与生产枢纽根同在 `D:` 盘，这也顺带让测试跑在真实的文件系统语义上。
 3. **删除用例只用可再生成的合成包**：`delete_archives=true` 的用例**永不使用用户手上的真实包**。用例自己在 setup 阶段现造样本、teardown 阶段清理。理由直白——C3+C4 下删除不可撤销，一个测试 bug 就能吃掉用户的原始资源。
 
 #### 10.2.4 fixture：macOS 已造好的可以直接搬，但要分清哪些能搬
@@ -7742,11 +7821,11 @@ pwsh -NoProfile -File D:\GameFlow\scripts\Preflight.ps1 -Json
 
 | # | 判定 | 现象 |
 |---|---|---|
-| M0-1 | 输出是**一份 JSON**，§9 规定的字段**一个都不是 `unknown`** | 包含至少：`sevenzip.path/version`、`archiver.alternatives`（WinRAR/Bandizip 是否只有 GUI）、`psversion`、`pwsh.present`、`library_volume` / `stg_volume` / `filesystem`、`acp`、`beta_utf8`、`longpaths_enabled`、`execution_policy`（**全部作用域**）、`library_root_in_onedrive_or_programfiles`（必须为 false，§7.6） |
+| M0-1 | 输出是**一份 JSON**，§9 规定的字段**一个都不是 `unknown`** | 包含至少：`sevenzip.path/version`、`archiver.alternatives`（WinRAR/Bandizip 是否只有 GUI）、`psversion`、`pwsh.present`、`library_volume` / `stg_volume` / `filesystem`、`acp`、`beta_utf8`、`longpaths_enabled`、`execution_policy`（**全部作用域**）、`hub_root_in_onedrive_or_programfiles`（必须为 false，§7.6） |
 | M0-2 | `sevenzip.version >= 25.01` | 低于此拒绝进入 M1（D-17 硬下限）。25.01 ≤ v < 26.02 时报告顶部出现长期提示，但不拒绝运行 |
 | M0-3 | `library_volume == stg_volume` | 否则 `File.Replace` 跨卷抛异常（D-06 的前置条件） |
 | M0-4 | `execution_policy` 的 `MachinePolicy` / `UserPolicy` 已判明 | 若非 `Undefined`，`-ExecutionPolicy Bypass` 无效，§9 必须给出处置路径 |
-| M0-5 | §11 #1–#4 各有一条实测记录落在 `D:\GameLib\_reports\` 下 | 记录必须写"测了什么命令、看到什么、结论"，不是"应该可以" |
+| M0-5 | §11 #1–#4 各有一条实测记录落在 `D:\GameHub\_reports\` 下 | 记录必须写"测了什么命令、看到什么、结论"，不是"应该可以" |
 | M0-6 | fixture 库已在 Windows 上跑通一遍 L2 冒烟 | `lab7z/arc/plain.7z`、`mis/a.jpg`、`vol/parts.7z.001` 三个样本的 `7z l -slt` 输出与 macOS 结论一致（Type / 条目数 / Volumes）。**不一致就说明跨平台外推假设有问题，必须先查清再进 M1** |
 
 #### 10.3.2 M1 验收（执行体 A）
@@ -7798,7 +7877,7 @@ pwsh -NoProfile -File D:\GameFlow\scripts\Invoke-Work.ps1 -BatchId 2026-01-01-t-
 | M3-1 | 正路径：合成包被删 | 用**可重新生成的合成包**（§10.2.3 护栏 3）走完 `PLANNED → … → SCANNED`，源包被删，`manifest.json` 里 SHA-256 在 |
 | M3-2 | 删除由已落盘状态 gate | 把 `state.json` 里的 `verified` 手工改成 false 后重跑 → 不删除。证明 D-16"不现场重判" |
 | M3-3 | Defender 三级分流 | EICAR 样本入包 → `THREAT_SUSPECTED` 或 `THREAT_CONFIRMED`（按 §6 的 A/B 级判据），源包不删。**扫描失败 → 按 C 级当 B 处理**，也要有一个用例 |
-| M3-4 | Defender 排除项范围正确 | 只排 `D:\GameLib\_stg\`；`games\` 下保留实时保护（D-19）。用 `Get-MpPreference -ExclusionPath` 核对 |
+| M3-4 | Defender 排除项范围正确 | 只排 `D:\GameHub\_stg\`；`games\` 下保留实时保护（D-19）。用 `Get-MpPreference -ExclusionPath` 核对 |
 | M3-5 | 互斥 | 同时起两个 B → 第二个停在 `LOCKED_BY_ANOTHER_RUN` 且 **不落盘、不进状态机**（§4.2）。用 `FileShare.None` 而非 lock+PID（D-09） |
 | M3-6 | 崩溃恢复 | 解压中途 `Stop-Process -Force` → 删掉 `state.json` → 重跑：状态从 `events.jsonl` 完全重建到崩溃前**最后一个已落盘**状态；`events.jsonl` 末尾的半行被丢弃而不是让解析崩掉（§8.8） |
 | M3-7 | MOTW | 解压产物带 `Zone.Identifier`；验收后 `Unblock-File` 跑过，`Get-Item -Stream Zone.Identifier` 在 `games\<dirname>\` 下零命中（D-18）。**这条必须在 M3 完成，不能留给 M4** |
@@ -7847,7 +7926,7 @@ pwsh -NoProfile -File D:\GameFlow\scripts\Invoke-Work.ps1 -BatchId 2026-01-01-t-
 
 - **3–5 个样本不构成分布。** 因此阈值不是"统计出来的"，是"保证不误伤已知样本 + 留一个明确倍数余量"。倍数（1.5× / 3× / 10×）本身是工程惯例，不是测量结果——照实标 `【社区】`。
 - **标定会过期。** 用户换下载器、换资源站、换网盘客户端，G2/G4 的窗口就要重标。触发条件写死：Preflight 探测到下载器变化，或 `netdisk-profiles.json` 新增条目 → 报告里出现"标定可能已过期"提示（**提示，不阻断**）。
-- **标定产物落在 `D:\GameLib\_reports\` 下**，每次标定追加一节：样本清单（含 SHA-256）、逐项观测值、结论值、调整理由。这是"人在环内"的实现方式——阈值为什么是这个数，永远查得到。
+- **标定产物落在 `D:\GameHub\_reports\` 下**，每次标定追加一节：样本清单（含 SHA-256）、逐项观测值、结论值、调整理由。这是"人在环内"的实现方式——阈值为什么是这个数，永远查得到。
 
 ---
 
@@ -7859,8 +7938,8 @@ pwsh -NoProfile -File D:\GameFlow\scripts\Invoke-Work.ps1 -BatchId 2026-01-01-t-
 
 | # | 事项 | 怎么测 | 不测的后果 | 阻塞哪一节 |
 |---|---|---|---|---|
-| **1** | **目标机基础环境快照**：`7z.exe` 是否在 PATH、版本号、是否只有 WinRAR/Bandizip GUI；`$PSVersionTable`；`pwsh.exe` 是否存在；库所在卷的文件系统（NTFS/exFAT）；系统 ACP 与 Beta UTF-8 状态；`LongPathsEnabled`；`Get-ExecutionPolicy -List` 全作用域；库根是否落在 OneDrive / `Program Files` 下 | 一个 `Preflight.ps1` 一次性输出 JSON。E3 只说"装了 7-Zip **或** WinRAR/Bandizip"，**没指明是哪个** | **后面每一节都建在沙上。** 版本决定 D-17 能不能满足；ACP 决定 D-05 走哪一支、D-20 的 GBK 换算是否成立；`LongPathsEnabled` 决定 MAX_PATH 预算；ExecutionPolicy 的 MachinePolicy/UserPolicy 决定 `-ExecutionPolicy Bypass` 有没有用；OneDrive 目录会导致 MTool inject 失败（`【社区】`） | §9（前置探测本身）、§2（MAX_PATH）、§5、§6、§8 |
-| **2** | **Codex 沙盒能否写 `D:\GameLib`**（project 打开 `D:\GameFlow` 时）；`sandbox_workspace_write.writable_roots` 的实际边界；`<writable_root>/.codex` 被递归置只读是否影响我们 | 配 `writable_roots` 后让 agent 往 `D:\GameLib\_reports\` 写一个文件；再试写 `games\<dirname>\.gameflow\` | Codex 侧第一步写文件就失败。要么整套 skill 权限模型重设计，要么被迫用 full access（**安全上不可接受**） | §8（Codex 操作面）、§2（双根部署） |
+| **1** | **目标机基础环境快照**：`7z.exe` 是否在 PATH、版本号、是否只有 WinRAR/Bandizip GUI；`$PSVersionTable`；`pwsh.exe` 是否存在；库所在卷的文件系统（NTFS/exFAT）；系统 ACP 与 Beta UTF-8 状态；`LongPathsEnabled`；`Get-ExecutionPolicy -List` 全作用域；枢纽根是否落在 OneDrive / `Program Files` 下 | 一个 `Preflight.ps1` 一次性输出 JSON。E3 只说"装了 7-Zip **或** WinRAR/Bandizip"，**没指明是哪个** | **后面每一节都建在沙上。** 版本决定 D-17 能不能满足；ACP 决定 D-05 走哪一支、D-20 的 GBK 换算是否成立；`LongPathsEnabled` 决定 MAX_PATH 预算；ExecutionPolicy 的 MachinePolicy/UserPolicy 决定 `-ExecutionPolicy Bypass` 有没有用；OneDrive 目录会导致 MTool inject 失败（`【社区】`） | §9（前置探测本身）、§2（MAX_PATH）、§5、§6、§8 |
+| **2** | **Codex 沙盒能否写 `D:\GameHub`**（project 打开 `D:\GameFlow` 时）；`sandbox_workspace_write.writable_roots` 的实际边界；`<writable_root>/.codex` 被递归置只读是否影响我们 | 配 `writable_roots` 后让 agent 往 `D:\GameHub\_reports\` 写一个文件；再试写 `games\<dirname>\.gameflow\` | Codex 侧第一步写文件就失败。要么整套 skill 权限模型重设计，要么被迫用 full access（**安全上不可接受**） | §8（Codex 操作面）、§2（双根部署） |
 | **3** | **`prefix_rule` 对 PowerShell 的拆分语义**：`codex execpolicy check` 怎么看待 `powershell.exe -NoProfile -Command "…"` | `codex execpolicy check --pretty --rules ~/.codex/rules/default.rules -- powershell.exe -NoProfile -Command "7z t x.7z"`；再对比 `-File` 形式 | 官方 rules 文档**全文零提及 powershell/pwsh/cmd.exe**（`【官方】`：grep 0 命中），极可能整条调用被当成单一 invocation → `pattern=["7z","t"]` 失效 → 每次解压都要人点一次。**注意：这不阻塞 A**（A 由 Windows 任务计划触发，不经审批面，D-10），但会显著劣化 B 的体感 | §8 |
 | **4** | **浏览器扩展驱动已登录浏览器时，是否占用前台指针** | 装扩展后跑一个 `@Chrome` 任务，全程观察鼠标指针与焦点是否被接管 | **这条决定阶段一/阶段二的分界线画在哪。** 官方文档两面都有暗示、没有明确表态。若扩展路径不占前台，则"用已登录浏览器转存网盘"可以留在阶段一（不占主力机，E1 的痛点大幅缓解）；若占前台，它必须整段划进 C，M4 的会话模型也随之改变 | §1（两阶段定性）、§7（C 的会话模型）、§10.1（M4 范围） |
 | **5** | **加密包在 stdin 重定向自 `NUL` 时是否真的不挂起** | `7z t <加密包> <NUL`，看是否立即返回；`powershell.exe` 与 `pwsh.exe` 各一次 | macOS 上 `</dev/null` 得到 exit 255（`【实测】`），但 **Windows 的控制台密码读取可能走 `CONIN$` 而不是 stdin**，那样 `<NUL` 挡不住挂起。后台任务里挂死一个无输出的进程是**最难发现的故障模式**。（缓解已写进 §8.8：无论结论如何都必须设超时） | §6、§8 |
@@ -7884,7 +7963,7 @@ pwsh -NoProfile -File D:\GameFlow\scripts\Invoke-Work.ps1 -BatchId 2026-01-01-t-
 | **23** | **Codex 是否对脚本内部起的子进程重新审批** | 让一个已放行的 `.ps1` 内部 `Start-Process 7z.exe`，看是否再次弹审批 | 决定 §8.5.4「把审批面收敛到 1 次」的兜底设计是否成立。若子进程也逐个审批，A 的无人值守就是空话，必须改走任务计划以外的路径 | §8.5 |
 | **24** | **重定向管道（非控制台）下 `-sccUTF-8` 是否生效** | `7z l -slt -sccUTF-8` 输出重定向到文件，看含日文条目名的包读出来是不是正确码点 | 不生效则 `l -slt` 阶段就把条目名读成乱码 → §6.8 的 D5（`Files: N` 与条目数一致）与 D6（逐条目 exists + size 对账）会在**完全正常的包**上假失败，源包永远删不掉，而人查不出原因 | §6.2.1、§6.8 |
 | **25** | **`7z.exe i` 输出的 handler 名逐字拼写（含大小写）** | 目标机跑 `7z i`，与 `container-types.json` 的 `recurse_into_types` / `never_recurse_types` 逐字对照 | 拼写对不上 → 容器白名单匹配失败 → 每个包都落 `WAITING_FOR_RULE`，**流水线整体停摆**。三份草稿曾给出三套互相冲突的大小写，说明这条不能靠记忆 | §3.6.3、§5.4、§6.4 |
-| **26** | **真实游戏包的最长内部条目路径**（RPG Maker MV/MZ 与 Unity 各取 3–5 个） | `7z l -slt` 求 `Path` 字段的最大字符长度与中位数 | 决定 §2.5 的 `E ≤ 222 − N` 闸门实际触发频率。若 E 中位数≈80，降级机制形同虚设；若≈180，多数日文长标题都会被强制降级成 `g0042-a1b2c3d4`，用户看到一库不可读的目录名——那属于设计失败，需要重新考虑库根还能不能再压 | §2.5、§3.2A |
+| **26** | **真实游戏包的最长内部条目路径**（RPG Maker MV/MZ 与 Unity 各取 3–5 个） | `7z l -slt` 求 `Path` 字段的最大字符长度与中位数 | 决定 §2.5 的 `E ≤ 222 − N` 闸门实际触发频率。若 E 中位数≈80，降级机制形同虚设；若≈180，多数日文长标题都会被强制降级成 `g0042-a1b2c3d4`，用户看到一库不可读的目录名——那属于设计失败，需要重新考虑枢纽根还能不能再压 | §2.5、§3.2A |
 | **27** | **`Unblock-File` 是否改动主数据流的 `LastWriteTime`** | 造一个带 MOTW 的文件，记 `LastWriteTimeUtc` → `Unblock-File` → 再读一次 | 决定 `manifest.stage1_snapshot` 拍在 `Unblock-File` **之前**还是之后。若会改，快照拍错时点会让阶段二的差集把**整库都算成「变了」**，MTool 产物识别彻底失效 | §3.5、§6.10、§7.6 |
 | **28** | **单次巡检的实际耗时**（在含约 50 个游戏目录、`_inbox` 里约 30 个分卷文件的库上计时） | 真实库上跑一次 `Invoke-Sweep.ps1` 并计时 | 若超过巡检间隔（10 分钟），`MultipleInstances = IgnoreNew` 会把后续触发**静默丢弃**——没有报错、没有事件，任务计划历史里只有一行「已忽略」。巡检看似在跑、实则饿死，**是本项目最难发现的一类故障** | §5.10、§8.8.10 |
 
@@ -7900,7 +7979,7 @@ pwsh -NoProfile -File D:\GameFlow\scripts\Invoke-Work.ps1 -BatchId 2026-01-01-t-
 | **M4** | #14 #18 #21 |
 | 任意时点（不阻塞里程碑） | #15 #19 #20 |
 
-**"有结论"的定义**：在 `D:\GameLib\_reports\` 下有一条记录，写明测了什么命令、看到什么输出、结论是什么。**"应该可以"不算结论。** 若某条实测下来结论是"做不到"，那也是结论——它会改变对应章节的设计，而不是被搁置。
+**"有结论"的定义**：在 `D:\GameHub\_reports\` 下有一条记录，写明测了什么命令、看到什么输出、结论是什么。**"应该可以"不算结论。** 若某条实测下来结论是"做不到"，那也是结论——它会改变对应章节的设计，而不是被搁置。
 
 ### 11.2 已从清单中消解的三条
 
@@ -7919,15 +7998,15 @@ pwsh -NoProfile -File D:\GameFlow\scripts\Invoke-Work.ps1 -BatchId 2026-01-01-t-
 | 编号 | 决策 | 选定方案 | 被否决的替代方案 | 理由与证据 | 可信度 |
 |---|---|---|---|---|---|
 | **D-01** | 执行体切分 | **三执行体**：A 巡检（Windows 任务计划，无密码、无提权、只读+归位）/ B 作业（人或 Codex 在交互会话触发，带密码、需提权）/ C 前台（Computer Use）。A+B = 用户要求的阶段一 | 上游的两分法：「阶段一 = 一个后台脚本」/「阶段二 = Computer Use」 | 需要密码的步骤和需要提权的步骤**都不能**放进无人值守计划任务：S4U 登录类型官方明写不存储密码、访问不了加密文件 → 解不开 DPAPI 密码库；`MpCmdRun` 官方明写**需提权运行**，与 `-RunLevel Limited` 直接冲突。切分后 A+B 仍完全满足 C1 | 【官方】https://learn.microsoft.com/en-us/defender-endpoint/command-line-arguments-microsoft-defender-antivirus （MpCmdRun 需提权，页首原文逐字复核）+ 【官方】任务计划 S4U 登录类型（转引 §8） |
-| **D-02** | 下载落地 | 全局下载目录固定为 **`D:\GameLib\_inbox`**，执行体 A 按批次清单**认领归位**到 `games\<dirname>\`。**C3 是终态保证，不是落地瞬间的保证** | 上游设计的「Codex 将下载目标定到 `games\<游戏名>\`」 | 内置浏览器**没有**按任务/按游戏的下载目录——官方 112 KB 配置参考里 `download_dir` 类键 **0 命中**；只有一个 GUI 全局设置或「每次询问」。**这个能力不存在**，不是我们不用 | 【官方】本地留存的官方配置参考全文检索 + 【待测】§11 #14（GUI 侧复核） |
+| **D-02** | 下载落地 | 全局下载目录固定为 **`D:\GameHub\_inbox`**，执行体 A 按批次清单**认领归位**到 `games\<dirname>\`。**C3 是终态保证，不是落地瞬间的保证** | 上游设计的「Codex 将下载目标定到 `games\<游戏名>\`」 | 内置浏览器**没有**按任务/按游戏的下载目录——官方 112 KB 配置参考里 `download_dir` 类键 **0 命中**；只有一个 GUI 全局设置或「每次询问」。**这个能力不存在**，不是我们不用 | 【官方】本地留存的官方配置参考全文检索 + 【待测】§11 #14（GUI 侧复核） |
 | **D-03** | 归档类型识别 | **永不传具体类型名**（`-t7z`/`-tzip`/`-trar`…）。只允许通配形式：`-t*`（强制只开一层，用于深度计数）、`-t*:s{N}m`（前缀垃圾 >8 MB）、`-t#:e`（人工诊断）。改后缀从主流程**降级为例外分支** | ① archive-reality 的「把 C7 实现为 `7z -t<type>` 显式指定类型」；② 整张「伪装扩展名 → 真实类型」映射表（`dat-as-rar`/`bin-as-zip`）；③ 「对 zip/rar/7z 三个候选各跑一次 `7z l -t<type>`」的受控探测 | 默认模式就是 `-t*:r` + 前 8 MB 签名扫描；扩展名只是「第一猜测 + 警告来源」。给**具体**类型会**关闭嗅探**：`-tzip fake.jpg`（内容其实是 7z）→ exit 2 硬失败，不给 `-t` → `Type = 7z` 正常打开。而资源站公告的规则本身经常是错的（「mp4 改 zip 或 rar 都行」这种表述说明上传者自己也不清楚真实类型）。**照着站点公告写死 `-t<type>`，会把本来自动能解的包变成硬失败** | 【官方】随 7-Zip 官方 tarball 分发的 `MANUAL/cmdline/switches/type.htm` 全文 + 【实测·macOS 7zz 25.01】（`-t` 语义属 7-Zip 跨平台公共层，可外推；仍需 §11 #1 确认 Windows 版本一致） |
 | **D-04** | 改后缀的唯一硬例外 | **分卷 `.NNN` 重建**：伪装命名的分卷组必须**整组**补齐 `.NNN` 序列，且只在 `_stg` 里对副本做、原始文件永不改名、规则必须由批次条目**显式声明** | ① 「主流程完全不需要改名」（漏掉了这个真实存在的例外）；② 资源站教程的「先改 zip 再改 7z.001」三步法 | 实测：三个伪装成 `.mp4` 的分卷（实为 `.7z.001/.002/.003`）→ `7z t` **exit 2 完全打不开**，只改首卷也不行（报 `Unexpected end of archive`）；整组补 `.NNN` 后 → exit 0、`Type = Split`、`Volumes = 3`。且 **`.NNN` 之前的扩展名无所谓**——`game.mp4.001` 正常工作，所以站点教程中间那步「改成 zip/7z」纯属多余。C7 在真实资源站里出现的形态**恰恰以分卷为主** | 【实测·macOS 7zz 25.01】（卷集命名逻辑属跨平台公共层，可外推；§10.2.4 要求在 Windows 用 `7z.exe` 复跑确认） |
 | **D-05** | 游戏目录名 | 完整规范化（NFC → 非法字符换**全角同形字** → 去控制字符 → 折叠空白 → 去尾部点与空格 → 保留设备名防御（含 `NUL.txt` 与 `COM¹/COM²/COM³` 上标变体）→ 长度裁剪 → SHA-1 短哈希防撞）**再加一道 ACP 可表示性往返检查**：能无损往返 → 用规范化标题；不能（或 MAX_PATH 预算超限）→ 降级 ASCII slug `g0042-<romaji-or-hash>`，真实标题写进 `manifest.json`。**无论走哪支都记录降级原因** | ① 一律保留日文标题（windows-download）；② 一律用 ASCII slug（archive-reality） | 两者的技术前提都不完整。真实约束**不是「非 ASCII」而是「必须能在系统 ANSI 代码页内无损表示」**——老引擎 KiriKiri/NScripter/RM2000-VX 用 ANSI API 打开自己的资源，在日文 Windows（ACP=932）上日文路径**完全正常**，在简中（936）上日文假名大部分能表示、部分汉字/记号不能。往返检查把一个口味之争变成了**可计算的确定性判定** | 【社区】（老引擎 ANSI API 行为）+ 【待测】§11 #1（该机真实 ACP 未知，是这条规则走哪一支的唯一输入） |
-| **D-06** | 中转区位置 | **库级短路径** `D:\GameLib\_stg\<8hex>\`（25 字符），**必须与游戏库同卷** | 上游的 `games\<名>\.gameflow\staging\<attempt-id>\` | 上游设计单这一段就吃 39 字符预算，配合日文长名 + 多重嵌套会真的撞破。建目录实际上限是 **248**（MAX_PATH−12）不是 260。同卷是硬前置：`File.Replace` **跨卷抛异常**，staging→游戏目录跨卷移动会退化成复制+删除。附带收益：Defender 排除项从「每游戏一个通配路径」简化成一个固定目录（支撑 D-19）。**不违反 C3**——C3 约束的是原始压缩包的终态位置，中转区是临时的、解完即清空 | 【官方】`ReplaceFileW`（跨卷）+ 算术（字符数可验算）+ 【社区】（MAX_PATH−12 的建目录上限） |
+| **D-06** | 中转区位置 | **枢纽级短路径** `D:\GameHub\_stg\<8hex>\`（25 字符），**必须与游戏库同卷** | 上游的 `games\<名>\.gameflow\staging\<attempt-id>\` | 上游设计单这一段就吃 39 字符预算，配合日文长名 + 多重嵌套会真的撞破。建目录实际上限是 **248**（MAX_PATH−12）不是 260。同卷是硬前置：`File.Replace` **跨卷抛异常**，staging→游戏目录跨卷移动会退化成复制+删除。附带收益：Defender 排除项从「每游戏一个通配路径」简化成一个固定目录（支撑 D-19）。**不违反 C3**——C3 约束的是原始压缩包的终态位置，中转区是临时的、解完即清空 | 【官方】`ReplaceFileW`（跨卷）+ 算术（字符数可验算）+ 【社区】（MAX_PATH−12 的建目录上限） |
 | **D-07** | 配置格式 | **JSON**，人类注释走 `"_note"` 字符串字段。所有 `ConvertTo-Json` **一律显式 `-Depth 10`** | YAML（上游的 `batch.yaml`） | PowerShell 内置 JSON、零依赖；YAML 在 5.1 上需要装模块（`powershell-yaml`），而 Codex 的原生 agent 跑 `powershell.exe -NoProfile`，模块可用性不可控。`-Depth` 必须显式：默认 `-Depth 2`，本项目的批次清单第 4 层就会被**静默截断**。JSON 不能写 `//` 注释，所以约定 `"_note"` 字段 | 【官方】`ConvertTo-Json` 默认 `-Depth 2` + 【官方】Codex 配置参考（Windows agent 用 `powershell.exe -NoProfile`） |
 | **D-08** | 状态持久化 | **`events.jsonl` 为唯一真相**（append-only），`state.json` 是**派生快照**，任何时候可删掉从 events 完全重建（I2）。JSONL 必须 `-Compress`、整行一次 `Write` + `Flush($true)` + 立即关闭；读取端逐行解析并**丢弃解析失败的最后一行** | 「以 `state.json` 为主、崩溃时靠原子替换保证一致」 | `File.Replace` **不是原子的**——官方自称「把几步合进一个函数」并列举三种部分失败中间态，`MoveFileEx` 全文无 atomic 字样。真正的崩溃安全来自「唯一真相是 append-only 日志 + 派生物可重建」，不是追求单次替换的原子性。不保持长开 StreamWriter：强杀会丢缓冲区。默认多行 JSON 会毁掉「一行一条」，所以 `-Compress` 是硬要求 | 【官方】`ReplaceFile` / `MoveFileEx` 文档（转引 §8.8）+ 【社区】（JSONL 半行恢复惯例） |
 | **D-09** | 并发互斥 | **`FileShare.None` 独占文件句柄**（OS 在进程死亡时自动释放）。抢锁失败统一停在运行期状况 `LOCKED_BY_ANOTHER_RUN`，**不落盘、不进状态机**、不细分异常。若改用命名 Mutex 必须加 `Global\` 前缀 | ① lock 文件 + PID 存活检测 + 超时清理陈旧锁；② 默认（`Local\`）命名 Mutex | Windows 的 PID **复用很快**，PID 存活检测会误判；「超时清理陈旧锁」引入时间猜测，与确定性偏好直接冲突。`Local\` Mutex 只在当前终端服务会话内可见——**计划任务与交互会话互相看不见**，而这恰好是 A 与 B 的关系，等于没有互斥 | 【社区】（PID 复用）+ 【官方】（Mutex `Global\`/`Local\` 命名空间语义） |
-| **D-10** | 阶段一调度 | **Windows 任务计划**（`MultipleInstances = IgnoreNew`，**非 S4U**，DPAPI vault 创建身份与运行身份一致） | Codex 桌面 App 的 Scheduled tasks（绑定 `D:\GameLib` 为 project，prompt 里触发 skill） | ① 品味：A 是纯确定性文件处理器，用一个 LLM turn 去驱动它等于把确定性逻辑塞进不确定的载体，还要烧 token；② 依赖面：Codex 计划任务要求「开机 **+ 桌面 App 常驻** + 项目目录在盘上 + 沙盒能写到库根」，任务计划只要求用户登录着；③ E1：这是主力机会被打断，桌面 App 可能被关掉，任务计划不会；④ 沙盒：Codex 计划任务用默认沙盒设置无人值守跑，workspace-write 写不到 project 外，还要额外配 `writable_roots` | 【官方】Codex 计划任务的前置条件原文 + CONTEXT §七（用户品味）+ E1 |
+| **D-10** | 阶段一调度 | **Windows 任务计划**（`MultipleInstances = IgnoreNew`，**非 S4U**，DPAPI vault 创建身份与运行身份一致） | Codex 桌面 App 的 Scheduled tasks（绑定 `D:\GameHub` 为 project，prompt 里触发 skill） | ① 品味：A 是纯确定性文件处理器，用一个 LLM turn 去驱动它等于把确定性逻辑塞进不确定的载体，还要烧 token；② 依赖面：Codex 计划任务要求「开机 **+ 桌面 App 常驻** + 项目目录在盘上 + 沙盒能写到枢纽根」，任务计划只要求用户登录着；③ E1：这是主力机会被打断，桌面 App 可能被关掉，任务计划不会；④ 沙盒：Codex 计划任务用默认沙盒设置无人值守跑，workspace-write 写不到 project 外，还要额外配 `writable_roots` | 【官方】Codex 计划任务的前置条件原文 + CONTEXT §七（用户品味）+ E1 |
 | **D-11** | Codex 操作面 | 五个固定操作做成 **skills**，放 `.agents/skills`，建议 `allow_implicit_invocation: false` | ① `custom prompts`；② 放 `.codex/` 目录 | `custom prompts` **官方已废弃**。`.codex/` **不是 skills 目录**——它是本地环境配置，其中的 actions 跑在集成终端而非 agent 沙盒，权限模型完全不同。`allow_implicit_invocation: false` 保证触发是显式的（确定性偏好） | 【官方】Codex 文档（custom prompts 废弃、skills 目录位置、`.codex` 语义） |
 | **D-12** | 嵌套深度 | **`max_depth = 5`**（可配置）。计数口径：**「成功解开一个白名单容器 = depth+1」**，不是「调用了几次 7z」；用 `-t*` 强制每次只开一层让计数与现实一致 | ① `max_depth = 4`（CONTEXT 的取整）；② 按 7z 调用次数计数 | 真实资源站的形态证据：「改名 → 外壳 zip → 分卷 rar → 7z → 同名文件夹」就是 4~5 层，加上「改 2 次后缀解压 2 次」的站点规则会更深。计数口径必须钉死是因为 `.tar.gz` 有的工具一步到底、有的两步；官方手册还明写有些格式（如 VHD 里的 MBR）会**一步开两层**，不加 `-t*` 会让「深度计数」和「哪一层需要密码」对不上。代价可忽略：触上限只是停机（`BLOCKED_RESOURCE`）不是破坏 | 【实测】（`.tar.gz` 一步/两步差异）+ 【官方】`type.htm`（`*` 只开一层）+ 【社区】（资源站真实形态） |
 | **D-13** | 压缩比护栏 | `ratio_warn = 200`（**仅记录**）、`ratio_block = 1000` **且** `declared_total > 5 GB` 才阻断。公式 = `sum(条目 Size) / 归档级 Physical Size`。**ratio 绝不单独阻断** | ① `ratio ≥ 100` 直接阻断（windows-download 的经验值）；② `sum(Size)/sum(Packed Size)` 的公式 | 实测合法的纯文本汉化补丁 7z 就有 **133x**，而真炸弹只有 **1029x**——中间没有干净分界，阈值 100 会在正常素材上频繁误伤。公式必须用归档级 `Physical Size`：7z 默认 solid，一个 block 只有第一个条目带 `Packed Size`，`sum(Packed Size)` 是错的。而且**头部声明的大小会撒谎**（`liar.zip` 实测），真正的护栏是运行期 staging 体积监控 + 绝对上限 + 磁盘余量。字段名就是 `Size`（不存在 `Uncompressed/Unpacked Size`） | 【实测】（133x / 1029x / solid 的 Packed Size 空缺 / 字段名）——归档元数据解析属跨平台公共层，可外推；阈值本身需按 §10.4 用用户样本标定 |
@@ -7936,12 +8015,12 @@ pwsh -NoProfile -File D:\GameFlow\scripts\Invoke-Work.ps1 -BatchId 2026-01-01-t-
 | **D-16** | 删除的触发方式 | 删除由 `state.json` 里**已落盘**的 `verified:true` + `consumed_by:<attempt-id>` **gate 住，不现场重新判断**（I3）。删除前必须把每个源包的 SHA-256 写进 `manifest.json` | 「删除时现场再跑一遍 D1–D12 确认」 | 现场重判**破坏幂等**：重跑时环境已变（staging 已清空、产物已落地），同一套判据会得出不同结论，于是「重跑一次」可能删掉上次没删的、或漏删上次该删的。已落盘的 gate 让「删不删」成为一个可回溯的历史事实而不是一次现场推断。SHA-256 是零成本的后悔补偿：误删后能确认重下的是不是同一个包 | 【社区】（幂等设计惯例）+ 由 I2/I3 推导 |
 | **D-17** | 7-Zip 版本下限 | **硬下限 25.01，建议 ≥ 26.02**。理由是**解析不可信归档的内存安全漏洞**，不是 MOTW。落后时报告顶部长期提示，**但不拒绝运行** | ① 「最低 ≥ 26.03，理由是 MOTW 保留漏洞 CVE-2026-58052」；② 不设下限 | 用 MOTW 当版本下限的理由**自相矛盾**：本 SPEC 明确不把 MOTW 当安全边界（D-18），既然不依赖它，它的 CVE 就不在威胁模型里。真正的理由更有力——本项目就是**拿陌生归档去喂解析器**：26.02 的 CVE-2026-14266（XZ 解压堆溢出 **RCE**）、26.01 一批 handler 越界读（SquashFS/NTFS/UEFI/UDF/WIM/Ar）、25.00/25.01 的符号链接连续加固。26.03 距调研只有 9 天，硬卡最新版是很硬的运维要求，而 E3 连装的是哪个软件都还没确定 | 【官方】7-Zip 官方 changelog / History.txt（本地留存） |
 | **D-18** | MOTW 策略 | **默认传播**，验收 + Defender 扫描通过后再显式 `Unblock-File`。**「解除标记」是执行体 C 的前置条件而非可选收尾**。**MOTW 不得作为安全边界** | 「默认不加 `-snz`」（保可玩性） | 传播 + 最后统一解除，能在流水线**未完成的中间态**保留 SmartScreen 这道提示（用户中途手动去点 exe 时）；不传播则从第一刻起就没有。「可玩性」的顾虑被显式 `Unblock-File` 收尾解决（官方明文：幂等、对未标记文件无副作用、PS 3.0+ 可用）。**代价必须写明**：忘了在 C 之前跑 `Unblock-File`，Computer Use 会撞上 SmartScreen 的**前台模态框**并卡死。不作安全边界的理由：默认值未知 + CLI/GUI 行为不一致 + 历史上反复出漏洞；真正的护栏是显式 Defender 扫描 | 【官方】`Unblock-File`（幂等、无副作用）+ 【官方】`-snz` 开关存在（22.00 引入，Windows-only）+ **【社区】+【待测】§11 #16**（默认值官方三处都没写；注册表 `WriteZoneIdExtract` 影响 CLI **无任何证据，不得写进 SPEC**） |
-| **D-19** | Defender 集成 | **三级分流**：A 级明确恶意 → `THREAT_CONFIRMED` 硬停；B 级疑似误报 → `THREAT_SUSPECTED` 软停等人工裁决；C 级扫描失败 → 按 B 处理。**排除项只排 `D:\GameLib\_stg\`，不排整个库**。人工放行**阶段一**产物按 **SHA-256**；**阶段二**的 MTool 产物只能**目录级排除** | ① 「扫到就停」；② 排除整个 `D:\GameLib`；③ 对 MTool 产物也用 SHA-256 白名单 | 游戏破解/汉化补丁的 Defender 误报是常态，「扫到就停」等于流水线停摆。排除整个库是净负面的安全交易。SHA-256 白名单对阶段一产物可行（哈希固定），但对 MTool 的 `version.dll` **原理上无效**——它是每次注入现生成的、**哈希随游戏实例变化**（Kaspersky 版主确认），逐个加排除项不可能工作。两者必须分开写。组合成立的关键：`MpCmdRun -Scan -ScanType 3` 官方明写**忽略排除目录**，所以「排除 `_stg` 免打断实时保护」与「显式预检仍然扫得到」不冲突 | 【官方】MS Learn MpCmdRun（同 D-01 的 URL：需提权、`-DisableRemediation` 语义、忽略排除项）+ 【社区·一手】（Kaspersky 版主关于 `version.dll` 哈希的确认）+ 【待测】§11 #6（stdout 格式是该模式下唯一的检出信号） |
+| **D-19** | Defender 集成 | **三级分流**：A 级明确恶意 → `THREAT_CONFIRMED` 硬停；B 级疑似误报 → `THREAT_SUSPECTED` 软停等人工裁决；C 级扫描失败 → 按 B 处理。**排除项只排 `D:\GameHub\_stg\`，不排整个库**。人工放行**阶段一**产物按 **SHA-256**；**阶段二**的 MTool 产物只能**目录级排除** | ① 「扫到就停」；② 排除整个 `D:\GameHub`；③ 对 MTool 产物也用 SHA-256 白名单 | 游戏破解/汉化补丁的 Defender 误报是常态，「扫到就停」等于流水线停摆。排除整个库是净负面的安全交易。SHA-256 白名单对阶段一产物可行（哈希固定），但对 MTool 的 `version.dll` **原理上无效**——它是每次注入现生成的、**哈希随游戏实例变化**（Kaspersky 版主确认），逐个加排除项不可能工作。两者必须分开写。组合成立的关键：`MpCmdRun -Scan -ScanType 3` 官方明写**忽略排除目录**，所以「排除 `_stg` 免打断实时保护」与「显式预检仍然扫得到」不冲突 | 【官方】MS Learn MpCmdRun（同 D-01 的 URL：需提权、`-DisableRemediation` 语义、忽略排除项）+ 【社区·一手】（Kaspersky 版主关于 `version.dll` 哈希的确认）+ 【待测】§11 #6（stdout 格式是该模式下唯一的检出信号） |
 | **D-20** | 密码策略 | 优先级链 **P0（你给的）→ 密码库（P1/P2，≤`pw_vault_attempts` 次探测）→ 放弃本轮**，P3/P4/P5 默认关闭（D-35）；**等价展开 ≤4 个**：`[原样, strip(), utf-8字节按gbk解, gbk字节按utf-8解]` 去重。**不断言系统 ACP 必须是 936**——把 ACP 与 Beta UTF-8 状态记进 `state.json` 作为解释失败的上下文，中文密码全败时分流 `PASSWORD_ENCODING_SUSPECT`。密码库存储**字节精确**，UI/日志**不得做任何 Unicode 规范化** | ① 从游戏名/域名/文件名推导密码；② 常见密码字典；③ 把 README 里「读懂」的一段话当密码；④ 「SPEC 写死 ACP == 936、要求关闭 Beta UTF-8」 | 等价展开有限、确定、可枚举——**这不是暴力破解**，是对「同一个中文密码在 GBK 与 UTF-8 系统上是两串不同字节」这一事实的确定性覆盖。断言 ACP=936 等于把用户的机器假定成简体中文 Windows，而 CONTEXT 明确「Windows 版本未知」；若那台机器是日文（932），legacy Shift-JIS 包反而原生正常、整套 GBK 换算不成立。NFKC 会折全角（`ｐａｓｓ１２３` → `pass123`），直接破坏密码；尾随空格有意义（`'pass '` ≠ `'pass'`，所以原样与 strip 都要留） | 【实测】（密码字节层事实：GBK/UTF-8 互不通用、全角、尾随空格）+ 【官方】`password.htm`（只有 `-p` 一种输入方式）+ 【待测】§11 #1（该机 ACP）、§11 #9（7-Zip 把 `-p` 转成什么字节，三种容器可能不同） |
 | **D-21** | 引擎判定与 MTool | 引擎判定用**有序表、先匹配先赢**，按**版本段前缀**（`RGSS1*`/`RGSS2*`/`RGSS3*`）；NW.js / Electron 只作属性记录不参与裁决。**主 exe 需人工确认一次**（候选集 + `ambiguous` → 写进 `mtool-profiles\<item-id>.json`）。**`UNKNOWN` ≠ 不支持翻译** → 停 `WAITING_FOR_MTOOL_RULE`，不判失败。MTool 不支持 Unity/Godot/Unreal → `TRANSLATION_NOT_APPLICABLE` 终态 | ① 照抄 SteamDB 的引擎正则；② 「多 exe 时自动选 `Game.exe`」；③ 把 `UNKNOWN` 当作不支持 | SteamDB 的正则只枚举 5 个 DLL 名，**漏 `RGSS300.dll` / `RGSS202J.dll`**，还把所有 RPG Maker 合并成一个标签。「自动选 `Game.exe`」有论坛真实反例：正确答案是 `開始游戏.exe`，选 `Game.exe` 会卡在加载界面。`UNKNOWN` 的反例是 Enigma Virtual Box 单 exe 打包的 MV——判 UNKNOWN 但 MTool 能处理。另外「游戏根目录」= 包含引擎标记文件的那一层，**不等于** `games\<dirname>\`（解压常多出一层，且按 C3 源包就在同级） | 【官方】Valve `rules.ini`（本地核对，作为反例来源）+ 【社区·一手】（多 exe 论坛反例、EVB 反例）+ 【官方】MTool 官网与 Patreon 两个独立来源的引擎清单（均无 Unity/Godot/Unreal）+ 【待测】§11 #18 |
-| **D-22** | 库根路径 | **`D:\GameLib\`**（10 字符根名）。**不得**放在 OneDrive 同步目录或 `Program Files` 下 | ① 上游的 `D:\GameLibrary\`；② 放在用户目录或 `Program Files` 下 | MAX_PATH 预算：`D:\GameLib\games\` = 17 字符，建目录实际上限是 **248**（MAX_PATH−12）不是 260；配合日文长名 + 多重嵌套，根名每多一个字符都是真金白银。OneDrive 有社区证据导致 MTool inject 失败；`Program Files` 写不进 `version.dll` | 算术（字符数可验算）+ 【社区】（OneDrive inject 失败、`Program Files` 权限）+ 【待测】§11 #1（确认库根实际不在这两处）、§11 #15（`LongPathsEnabled` 若可用，这条的严格程度可放宽） |
+| **D-22** | 枢纽根路径 | **`D:\GameHub\`**（10 字符根名）。**不得**放在 OneDrive 同步目录或 `Program Files` 下 | ① 上游的 `D:\GameLibrary\`；② 放在用户目录或 `Program Files` 下 | MAX_PATH 预算：`D:\GameHub\games\` = 17 字符，建目录实际上限是 **248**（MAX_PATH−12）不是 260；配合日文长名 + 多重嵌套，根名每多一个字符都是真金白银。OneDrive 有社区证据导致 MTool inject 失败；`Program Files` 写不进 `version.dll` | 算术（字符数可验算）+ 【社区】（OneDrive inject 失败、`Program Files` 权限）+ 【待测】§11 #1（确认枢纽根实际不在这两处）、§11 #15（`LongPathsEnabled` 若可用，这条的严格程度可放宽） |
 | **D-23** | 不变量 I5 的措辞 | **枚举式白名单**：A 的写集合恰为三处——① `games\<dirname>\`（含 `.gameflow\`）② **新建** `_reports\<batch-id>-<seq>.md`（不得覆盖既有报告）③ 把 `_inbox\` 中已认领的文件**移入** ①（同卷 rename，不构成删除语义）。除此之外不写、不删、不回收 `_stg\`（只报告孤儿） | 原措辞「A 永不写 `games\<dirname>\` 以外的路径，永不删除」 | 原措辞与分派给 A 的职责**自相矛盾**——A 必须写对账报告、必须把文件移出 `_inbox`；同时它又**禁不住**真正危险的操作（没说「不许覆盖既有报告」）。三位起草者独立提出同一异议。枚举式白名单更短、可断言、能直接写成一个 assert | 内部一致性（可验算） |
-| **D-24** | 新增两个停机态 | **`PATH_BUDGET_EXCEEDED`**（路径预算超限且 dirname 已降级仍不够）与 **`JOURNAL_CORRUPT`**（`events.jsonl` 不可解析） | ① 把路径超限塞进 `WAITING_FOR_RULE`；② 把日志损坏当作不落盘的运行期状况 | ① 路径超限的人工动作是**改配置**（换更短库根/指定更短目录名），与 `WAITING_FOR_RULE` 的「补规则」语义不同，混在一起会让停机态手册的「人工动作」一列自相矛盾；② 日志损坏若只是运行期状况，条目会在报告里**永久静默停住**——抢锁失败下次就好了，日志损坏下次还是坏的，两者性质不同 | 内部一致性 |
+| **D-24** | 新增两个停机态 | **`PATH_BUDGET_EXCEEDED`**（路径预算超限且 dirname 已降级仍不够）与 **`JOURNAL_CORRUPT`**（`events.jsonl` 不可解析） | ① 把路径超限塞进 `WAITING_FOR_RULE`；② 把日志损坏当作不落盘的运行期状况 | ① 路径超限的人工动作是**改配置**（换更短枢纽根/指定更短目录名），与 `WAITING_FOR_RULE` 的「补规则」语义不同，混在一起会让停机态手册的「人工动作」一列自相矛盾；② 日志损坏若只是运行期状况，条目会在报告里**永久静默停住**——抢锁失败下次就好了，日志损坏下次还是坏的，两者性质不同 | 内部一致性 |
 | **D-25** | Defender 预检的时点 | 钉死在 **`VERIFYING` 之内、`staging.promoted`（落地）之前**。`THREAT_*` 的 `from_state` 是 `VERIFYING` | 「`D1–D12` 全过并落地删包后进 `EXTRACTED`，再做 Defender」 | 被否方案下**源包在裁决前就被删了**，于是「A 级留证、不删源包」不可能成立（直接破坏 I1）；且扫描对象变成已落地到 `games\` 的产物，而「只排 `_stg` + `-DisableRemediation` 忽略排除目录」这套组合成立的前提正是**文件还在 `_stg` 时扫** | 内部一致性 + §6.9/§9.8 的三方一致 |
 | **D-26** | 事件的状态变更通道 | **唯一通道是 `state.entered`**，迁移信息进 `payload.{from_state, to_state, transition_id}`；§3.3.1 是事件 schema 的唯一权威 | 定义 14 个具名迁移 `kind`（如 `download.claimed`/`verify.result`）与 `state.entered` 并存 | 三份草稿各自宣称自己是权威，`kind` 名互不相交（`download.claimed` vs `item.claimed`、`reason_code` vs `reason`）。`events.jsonl` 是 I2 的唯一真相，schema 不唯一意味着**重放器、对账报告、删除 gate 三个消费者各写各的** | 内部一致性 |
 | **D-27** | 崩溃恢复的来源 | **`.bak` 不作恢复源**，只作诊断与取证；恢复路径唯一——`state.json` 不可解析就从 `events.jsonl` 全量重放 | 「`.bak` 可解析就直接用它恢复」（两份草稿都写成了正常路径） | 用 `.bak` 恢复会**跳过重放**，得到一个 `last_event_seq` 落后于日志的快照，而删除 gate（I3）读的正是这个快照里的 `verified` / `consumed_by`。保留 `.bak` 的真实价值是让崩溃后的盘面布局**确定可判读**（`ReplaceFile` 有备份与无备份时的残留命名完全不同） | 内部一致性 + I2 |
@@ -7951,16 +8030,20 @@ pwsh -NoProfile -File D:\GameFlow\scripts\Invoke-Work.ps1 -BatchId 2026-01-01-t-
 | **D-31** | 7-Zip 封装的类型开关 | `-TypeSpec` 增加合法取值 **`none`** = 不传 `-t`，走默认 `-t*:r`。**A 的顶层预检与 G5 必须用 `none`**；`*` 只用于 §6.4 的递归计层 | 封装总是拼 `-t<TypeSpec>`（结构上发不出「不带 `-t`」的调用） | 带 `-t*` 只能看到 Split 外壳、**拿不到内层 `Size` 表**，于是体积预算、压缩比护栏与路径穿越预检全部落空。A 的只读预检恰恰全靠这张表 | 【实测·macOS，可外推】 |
 
 | **D-32** | 网盘下载由谁执行 | **人工排队为主路径**：你把客户端下载目录一次性设成 `<root>\_inbox`，把本批次排进下载队列（每批约两分钟）；A 负责监视、完成判定与认领归位。Computer Use 驱动客户端降级为**可选路径**，保留设计但不是主路径（§7.0） | ① Computer Use 驱动客户端（原设计，`baidu` / `quark-ali` 走 §7.5）；② 全部改用第三方 API / 破解客户端 | E1 是硬约束：C 跑的时候用户用不了主力机。让 C 去点十个下载 = 拿几十分钟机器占用换两分钟手动操作，且客户端界面变化、限速弹窗、验证码、登录态过期对人是零成本干扰、对 Computer Use 是随时卡住的失败点。**且这条零架构改动**——`_inbox` + G1–G6 + 认领归位本来就是为「文件从哪来我不管」设计的。方案② 违反 §9.10 的合规边界 | 用户 2026-09-14 裁定 + E1 |
-| **D-33** | 库根的数量 | **允许登记多个库根**（`gameflow.config.json` 的 `library_roots[]`），但**一个批次只能落在一个库根里**（LR2）。每个库根各有一份完整子树，彼此无共享状态；MAX_PATH 预算、同卷约束、Defender 排除项、NTFS 要求**逐库根**独立核验（§2.4.3） | ① 单一全局库根（原设计）；② 每个游戏任意路径、可跨盘 | 方案② 的代价是真实的：`_stg` 必须与游戏库同卷（`File.Replace` 跨卷抛异常），跨盘要每卷一个 `_stg`、预算表每卷一份、Defender 排除项变多个；而批内统一就能让同卷约束与预算表在批内仍然成立，只需把 `library_root` 从全局常量改成受登记集合约束的批次字段 | 用户 2026-09-14 裁定；同卷约束见【官方】`ReplaceFileW` |
+| **D-33** | 枢纽根的数量 | **允许登记多个枢纽根**（`gameflow.config.json` 的 `hub_roots[]`），但**一个批次只能落在一个枢纽根里**（LR2）。每个枢纽根各有一份完整子树，彼此无共享状态；MAX_PATH 预算、同卷约束、Defender 排除项、NTFS 要求**逐枢纽根**独立核验（§2.4.3） | ① 单一全局枢纽根（原设计）；② 每个游戏任意路径、可跨盘 | 方案② 的代价是真实的：`_stg` 必须与游戏库同卷（`File.Replace` 跨卷抛异常），跨盘要每卷一个 `_stg`、预算表每卷一份、Defender 排除项变多个；而批内统一就能让同卷约束与预算表在批内仍然成立，只需把 `hub_root` 从全局常量改成受登记集合约束的批次字段 | 用户 2026-09-14 裁定；同卷约束见【官方】`ReplaceFileW` |
 | **D-34** | 密码候选的尝试顺序 | **按 `hit_count` 降序排序**（完整全序规则见 §3.7.4），vault 记 `hit_count` / `miss_count` / `last_used_at`。N7 相应改写为「禁止历史**改变判定结果**」，并新增 N7b 把本条列为唯一例外 | ① 恒按 `added_at` 升序（原设计，N7 原文明禁「按历史成功率排序候选」）；② 全局高频密码池优先试 | 它通过了 §1.2.5 的三问：结果不会不同（同一候选集穷举完结论一样）、可解释（计数器可读可 diff 可清零）、可复现（给定计数器顺序唯一）。省的是 `7z t` 的进程启动与归档打开开销，在大包上不可忽略。**方案② 被明确禁止**（护栏 V1）——跨 key 借用高频密码就是 §6.3.2 硬禁的字典爆破换了身外衣 | 用户 2026-09-14 要求 +【实测】资源站真实密码形态（站点/上传者级统一密码占绝大多数） |
 
 | **D-35** | 密码链的层数与预算口径 | **两层 + 放弃**：P0（你在批次里给的）先试且不占预算 → 密码库（P1/P2 合成一层，按 `hit_count` 降序）最多 **`pw_vault_attempts`（默认 8）次 7z 探测** → 用尽落 `WAITING_FOR_PASSWORD`。P3/P4/P5 保留设计但**默认关闭**（`EXTRACTED_NO_CONTENT` 的 readme 回喂是唯一例外）。vault 候选只存 `secure` + `hit_count` + `added_at` | ① 原 P0→P6 六层全开、按「候选个数 ≤ 8」限流（最坏 32 次探测）；② vault 存 `miss_count` / `last_used_at` / `byte_exact` / `added_by` | 用户 2026-09-14 给出实际形态：**大部分游戏都会给密码**。那条六层链的后四层几乎永远走不到，留着只会让失败路径难以解释。预算改按**探测次数**而非候选个数：等价展开会把 1 个中文候选变成 4 个形态，按个数算最坏是 32 次 `7z t` 进程启动，对 20 GB 的包是可感知的卡顿且现象是「卡住不动」；按次数算上限就是字面的 8。`byte_exact` 可由「展开去重后只剩 1 个形态」推导，不必存 | 用户裁定 + 【实测】纯 ASCII 密码展开后去重只剩 1 形态 |
 
-| **D-36** | 游戏落地路径的形状 | **`<library_root>\<group>\<dirname>\`**。`group` 是批次字段，默认 `"games"`，可填 `"202609"` 这类按月/按题材分组；不得以 `_` 开头、不得等于 `batches`。`_inbox\` / `_stg\` / `_reports\` / `batches\` **仍在库根下、不随 group 分裂** | ① 固定 `<library_root>\games\<dirname>\`（原设计）；② 让每个游戏指定任意绝对路径（D-33 已否决）；③ 每月登记一个新库根 | 用户 2026-09-14 给出真实布局 `E:\wen\games\hgames\202609\<游戏名>`。方案③ 要每月改一次机器配置，且会把 `_inbox`/`_stg` 也按月分裂——客户端下载目录要每月重设、Defender 排除项越积越多、孤儿回收要扫 N 个地方。`group` 只影响游戏落在哪，把这三样留在库根下就避开了全部代价。**代价是 MAX_PATH 预算**：该布局前缀 27 字符（基准 17），可用内部路径从 `222−N` 降到 `212−N`，降级会更频繁触发（§2.5.3a 给了三条要回余量的办法） | 用户裁定 + 算术（字符数可验算） |
+| **D-36** | 游戏落地路径的形状 | **`<hub_root>\<group>\<dirname>\`**。`group` 是批次字段，默认 `"games"`，可填 `"202609"` 这类按月/按题材分组；不得以 `_` 开头、不得等于 `batches`。`_inbox\` / `_stg\` / `_reports\` / `batches\` **仍在枢纽根下、不随 group 分裂** | ① 固定 `<hub_root>\games\<dirname>\`（原设计）；② 让每个游戏指定任意绝对路径（D-33 已否决）；③ 每月登记一个新枢纽根 | 用户 2026-09-14 给出真实布局 `E:\wen\games\hgames\202609\<游戏名>`。方案③ 要每月改一次机器配置，且会把 `_inbox`/`_stg` 也按月分裂——客户端下载目录要每月重设、Defender 排除项越积越多、孤儿回收要扫 N 个地方。`group` 只影响游戏落在哪，把这三样留在枢纽根下就避开了全部代价。**代价是 MAX_PATH 预算**：该布局前缀 27 字符（基准 17），可用内部路径从 `222−N` 降到 `212−N`，降级会更频繁触发（§2.5.3a 给了三条要回余量的办法） | 用户裁定 + 算术（字符数可验算） |
 
-| **D-37** | 删除前的人工确认 | **取消**。删除的安全性由两条**逐次执行的机器断言**保证：§6.8 的 D1–D12（正确性判据）+ **I6 的路径围栏**（删除目标必须在 `library_root` 之内，规范化全路径前缀比对，不跟随 reparse point）。skill 仍在结束摘要里逐条列出删了什么与 SHA-256 | 原设计：`gf-work` 每次运行前向人复述「本次可能删除源包」并由人确认一次 | 用户 2026-09-14：源压缩包在解压成功后本身没有保留价值，真正的风险不是「删了压缩包」而是「删错了东西」。一次覆盖整批的人工确认对这两类风险**都不起作用**——它既验证不了 D1–D12，也发现不了路径算错，而且会被疲劳性地点掉。用一条每次都执行的路径断言取代它，安全性是升的不是降的 | 用户裁定；I6 的比对方式为可实现的确定性算法 |
+| **D-37** | 删除前的人工确认 | **取消**。删除的安全性由两条**逐次执行的机器断言**保证：§6.8 的 D1–D12（正确性判据）+ **I6 的路径围栏**（删除目标必须在 `hub_root` 之内，规范化全路径前缀比对，不跟随 reparse point）。skill 仍在结束摘要里逐条列出删了什么与 SHA-256 | 原设计：`gf-work` 每次运行前向人复述「本次可能删除源包」并由人确认一次 | 用户 2026-09-14：源压缩包在解压成功后本身没有保留价值，真正的风险不是「删了压缩包」而是「删错了东西」。一次覆盖整批的人工确认对这两类风险**都不起作用**——它既验证不了 D1–D12，也发现不了路径算错，而且会被疲劳性地点掉。用一条每次都执行的路径断言取代它，安全性是升的不是降的 | 用户裁定；I6 的比对方式为可实现的确定性算法 |
 | **D-38** | B 能否无人值守 | **能**。B 挂计划任务的条件是 `LogonType = Interactive`（与创建 vault 的同一用户）+ `-RunLevel Highest`（`MpCmdRun` 需提权）。自动与手动共用同一入口脚本，互斥由 §8.8.6 的文件锁保证 | 原设计：「B 必须有人在场」，理由是 DPAPI 解不开 | **原理由是过度断言**：`S4U` 才不存密码、访问不了加密文件；`Interactive` 跑在该用户已存在的交互会话里、用的是其交互令牌，**DPAPI blob 完全可解**（A 用的本来就是 `Interactive`）。修正后 B 的真实约束只剩「身份一致」与「需要提权」，两条都可满足。代价三条：要求用户保持登录（锁屏不影响）、`Highest` 是一次真实的免 UAC 权限授予（由 I6 围住）、B 会在你用电脑时突然大量磁盘 I/O（可加 `-RunOnlyIfIdle`） | 【官方】LogonType 文档 + 对原断言的复核 |
 | **D-39** | 下载由谁执行 | **批次字段 `download_mode` 选**：`manual`（默认，你转存+排队）或 `computer_use`（C 驱动客户端）。可逐条目覆盖。两条都是一等路径；`computer_use` 只替换「转存+开始下载」，落地目录仍是 `_inbox`，完成判定与认领归位仍由 A 做 | D-32 原先把 `manual` 定为主路径、`computer_use` 定为可选 | 用户 2026-09-14：要的是**可选**，不是主/备。两条路径的右半边完全相同（`_inbox` + G1–G6 + 认领归位），所以做成开关的成本极低。选择依据写在 §7.0：`computer_use` 全程占前台且可靠性低一档（界面变化、限速提示、验证码、登录态过期） | 用户裁定 |
+
+| **D-40** | 解压在哪做、游戏怎么到目标路径 | **枢纽模型**：下载、认领归位、解压、校验、删源包**全部在固定的 `hub_root` 上完成**（`D:\GameHub`），最后一步 `DELIVERING` 把整个游戏目录**移动**到每批指定的 `destination_root`。`destination_root` 可为 `null`（停 `WAITING_FOR_DESTINATION`，之后用 `gf-deliver -To` 指定）。`.gameflow\` 随目录一起搬 | ① 直接解压到目标路径（把 `_stg` 放在目标卷）；② 游戏与压缩包彻底分离、各自固定 | 用户 2026-09-14：「下载到一个固定位置，后续再根据指令迁移」。枢纽模型换来四件事：**同卷恒成立**（认领归位与落地永远是 O(1) rename，`File.Replace` 跨卷抛异常这条约束自动满足，不再取决于这次把游戏放哪）、**Defender 排除项只有一条**（方案① 每开一个新目标就加一条）、**解压期 MAX_PATH 预算是固定值**（目标多长只影响投递、不影响解压）、**目标目录只接收成品且永不进 I6 删除白名单**。且 **C3 保住了**——源包与游戏本体在 `<hub>\games\<dirname>\` 确实同目录，分离发生在删包之后。唯一实打实的代价是跨卷投递要整体复制，时间与体积成正比 | 用户裁定；同卷约束见【官方】`ReplaceFileW` |
+| **D-41** | 每个游戏的状态与日志放哪 | **跟着游戏走**：`<游戏目录>\.gameflow\`，投递时随目录一起搬，搬完在 `state.json` 记下新的绝对路径 | ① 集中放枢纽 `state\<batch-id>\<item-id>\`；② 拆开（热状态入枢纽、manifest 跟游戏） | 用户 2026-09-14 选择。好处是状态永远不与数据脱节，游戏文件夹自带来源记录（搬到哪都能查清它从哪来、SHA-256 是多少、引擎判定结果）。代价是每个游戏目录多一个隐藏子目录 | 用户裁定 |
+| **D-42** | 目标路径要不要预先登记 | **不要求**。批次里自由填绝对路径，`New-Batch.ps1` 只校验（卷存在且 NTFS、可写、不在 OneDrive / `Program Files` 下、MAX_PATH 预算过关）并在报告开头回显一次 | 像 `hub_roots` 那样要求从已登记集合里选（D-33 对枢纽根的做法） | 用户 2026-09-14 选择，且**在枢纽模型下这是安全的**：`destination_root` 永不进 I6 的删除白名单，B 对它只有写权限没有删权限。路径写错最多是成品投递到意外位置——可恢复的麻烦，不是数据丢失。而枢纽根仍然要求登记，因为那里**有**删除权限 | 用户裁定 + I6 |
 
 
 ### 12.2 待用户拍板项
@@ -8009,4 +8092,4 @@ pwsh -NoProfile -File D:\GameFlow\scripts\Invoke-Work.ps1 -BatchId 2026-01-01-t-
 >
 > **三、`D:\GameTst\` 已由主控收编（异议已解决，保留于此仅作记录）。**
 >
-> §3 只定义了生产库根 `D:\GameLib\`，而 §10.2.3 的测试隔离硬护栏必须有一个独立的测试库根。我引入 `D:\GameTst\`，特意取与 `D:\GameLib\` **等长的根名（各 10 字符）**，使测试的 MAX_PATH 预算与生产逐字符相等（短一个字符，路径超限的 bug 就会在生产上首次暴露）。**主控裁决：由 §10 具名，§2.4 只保留约束。** 库根是配置项，把一个具体的测试路径写进 §2.4 的布局树会与「库根可配置」自相矛盾——所以 §2.4 只留「测试库根必须与生产库根等长」这条 MAX_PATH 等价约束，**具体名字 `D:\GameTst\` 由本节持有**。它由 `-Profile test` 解析得到，不出现在任何生产代码路径里。
+> §3 只定义了生产枢纽根 `D:\GameHub\`，而 §10.2.3 的测试隔离硬护栏必须有一个独立的测试枢纽根。我引入 `D:\GameTst\`，特意取与 `D:\GameHub\` **等长的根名（各 10 字符）**，使测试的 MAX_PATH 预算与生产逐字符相等（短一个字符，路径超限的 bug 就会在生产上首次暴露）。**主控裁决：由 §10 具名，§2.4 只保留约束。** 枢纽根是配置项，把一个具体的测试路径写进 §2.4 的布局树会与「枢纽根可配置」自相矛盾——所以 §2.4 只留「测试枢纽根必须与生产枢纽根等长」这条 MAX_PATH 等价约束，**具体名字 `D:\GameTst\` 由本节持有**。它由 `-Profile test` 解析得到，不出现在任何生产代码路径里。
