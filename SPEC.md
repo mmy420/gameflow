@@ -1727,7 +1727,8 @@ AppendEvent(itemDir, ev):
                      Append, Write, FileShare::None)          # 独占；失败 = LOCKED_BY_ANOTHER_RUN
                                                               # （运行期状况，不落盘、不进状态机）
   2. if fs.Length > 0 且最后一个字节 != 0x0A:                  # 上次崩溃留下半行
-        写入单字节 0x0A 封口 + Flush($true)
+        截断到最后一个 0x0A 之后（无 0x0A 则截到 0）+ Flush($true)
+        被丢弃的碎片原样记进 payload.discarded_text 留作取证
         先追加一条 journal.torn_line_sealed 事件（同样走本协议）
   3. ev.seq = (扫描本文件全部可解析行得到的 max(seq)) + 1
   4. line  = ConvertTo-Json $ev -Compress -Depth 10            # -Compress 是硬要求
@@ -1741,7 +1742,9 @@ AppendEvent(itemDir, ev):
 - **`-Compress` 是硬要求**：默认带缩进的多行 JSON 会彻底毁掉「一行一条」的可恢复性。
 - **不保持长开的 `StreamWriter`**：进程被强杀时缓冲区内容全丢。每条事件开→写→刷→关。
 - `Flush($true)` 是本项目唯一真正有断电保证的一步【官方】 https://learn.microsoft.com/en-us/dotnet/api/system.io.filestream.flush ——「clears all intermediate file buffers」，5.1 与 7.x 都有。
-- 追加本身**不是原子的**，崩溃可能留下半行【社区】（Windows 上没有找到官方保证）→ 第 2 步的封口逻辑是必需的。【待测】→ §11：NTFS 上 < 4 KB 的单次写被强杀是否真会撕裂半行。
+- 追加本身**不是原子的**，崩溃可能留下半行【社区】（Windows 上没有找到官方保证）→ 第 2 步的封口逻辑是必需的。
+- **封口是「截断」不是「补一个 LF」**（2026-09-14 由 `tests\Journal.Tests.ps1` 抓出，本条已修正）。原先写「写入单字节 0x0A 封口」，那样做会把**尾行撕裂**（良性、每次崩溃都会发生）变成**中间行不可解析**（致命，落 `JOURNAL_CORRUPT`）——下一次读取会把一次普通的崩溃恢复报成日志损坏。
+  改为截断之后得到一条强不变量：**`events.jsonl` 里每一行永远可解析**。这让 §3.3.5 的「中间行坏 = 真正的损坏」成为一个可靠信号，而不是崩溃的副产物。被丢弃的半行本来就是无法解析的 JSON 碎片，把它记进封口事件的 `payload.discarded_text` 比留在文件里当一行坏数据更有取证价值。【待测】→ §11：NTFS 上 < 4 KB 的单次写被强杀是否真会撕裂半行。
 
 #### 3.3.5 读取与重放协议（本条是重放顺序的唯一权威）
 
@@ -3020,13 +3023,19 @@ Rebuild(itemDir) -> state:
   # §3.3.5 明确允许封口后出现一次重复 seq，按 seq 排序会静默重排历史 → I2 失效。
 
   s := EmptyState(schema_version)
-  active_item := (events 中最后一条 to_state == PLANNED 的迁移所声明的 item_id)   # §4.8.3 的复活语义
+  active_item := (events 中**最后一条 item.registered** 的 item_id)               # §4.8.3 的复活语义
+  # ⚠ 本行原先写「最后一条 to_state == PLANNED 的迁移」，与上一段伪码不一致。
+  #   以 item.registered 为准：它是 §3.3.2 闭集里明确表示「这个 item_id 现在是
+  #   当前化身」的事件，判据单一；而「to_state == PLANNED」要绕一层迁移语义。
   for e in events:
       if e.item_id != active_item: s.history += e; continue
       if e.kind == 'state.entered':
-          if e.payload.from_state != s.state and s.state != null:
-              记 divergence；**采用 e.payload.to_state 继续**          # journal 是真相，不回退
-          s.state      := e.payload.to_state
+          # ⚠ from_state / to_state 是**顶层字段**，不在 payload 里（§3.3.1 是 schema 权威）。
+          #   payload 只放 {transition_id, reason_code}。原先这里写 e.payload.from_state，
+          #   与 §3.3.1 矛盾，2026-09-14 修正。
+          if e.from_state != s.state and s.state != null:
+              记 divergence；**采用 e.to_state 继续**                  # journal 是真相，不回退
+          s.state      := e.to_state
           s.entered_at := e.ts
           s.halt       := (紧随其后的 halt.entered) ? {reason_code, resume_allowed, cleared_by_allowed} : null
       else:                       # 事实事件

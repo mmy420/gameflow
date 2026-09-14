@@ -36,11 +36,23 @@ function script:Fail { param([string]$Msg)
 
 function Assert-Equal {
     param($Expected, $Actual, [string]$Because = '')
-    # Ordinal 比较：本项目大量处理大小写与 Unicode 形态敏感的字符串，
-    # 默认的文化敏感比较会让「ネコぱら」与「ネコパラ」之类的差异被吞掉。
-    $e = if ($null -eq $Expected) { '<null>' } else { [string]$Expected }
-    $a = if ($null -eq $Actual)   { '<null>' } else { [string]$Actual }
-    if (-not [string]::Equals($e, $a, [System.StringComparison]::Ordinal)) {
+    # 字符串走 Ordinal —— 本项目大量处理大小写与 Unicode 形态敏感的字符串，
+    # 文化敏感比较会把「ネコぱら」与「ネコパラ」之类的差异吞掉。
+    #
+    # **非字符串不得字符串化后再比**：PowerShell 7 保留数值字面量的原形，
+    # `"$(0x0A)"` 给出 "0x0A" 而不是 "10"，与 [byte]10 的 "10" 比会误报。
+    # 这条本身就是被一次误报抓出来的。
+    $ok = $false
+    if ($null -eq $Expected -and $null -eq $Actual) { $ok = $true }
+    elseif ($null -eq $Expected -or $null -eq $Actual) { $ok = $false }
+    elseif ($Expected -is [string] -and $Actual -is [string]) {
+        $ok = [string]::Equals($Expected, $Actual, [System.StringComparison]::Ordinal)
+    } else {
+        $ok = ($Expected -eq $Actual)        # 数值/布尔按值比，跨类型（Int32 vs Byte）也成立
+    }
+    if (-not $ok) {
+        $e = if ($null -eq $Expected) { '<null>' } else { '{0} ({1})' -f $Expected, $Expected.GetType().Name }
+        $a = if ($null -eq $Actual)   { '<null>' } else { '{0} ({1})' -f $Actual,   $Actual.GetType().Name }
         Fail ("期望 [{0}] 实际 [{1}] {2}" -f $e, $a, $Because)
     }
 }
