@@ -4490,6 +4490,9 @@ Warning 分类表在 `rules\sevenzip-warnings.json`（**已登记进 §2.4 布�
 | `Unsupported Method : <path>` | 7-Zip 不支持该压缩方法（如 ZIPX 的 method 96/97） | `WAITING_FOR_RULE` | 确定 |
 | `Dangerous link path was ignored : <p> : <target>` | 危险符号链接被拒（**这个是响亮的，与 T8 的静默相反**） | `BLOCKED_RESOURCE`，只允许放弃或重下（§6.6） | 确定 |
 
+> **实现约束（2026-09-14 由 `tests\SevenZip.Tests.ps1` 抓出）：本表的匹配顺序不可换，具体文案必须排在通用文案之前。**
+> `Cannot open encrypted archive. Wrong password?` 与 `Data Error in encrypted file. Wrong password? : <path>` **都含子串 `Wrong password`**。若先匹配通用的那条，**模糊**的 `DATA_ERROR_ENCRYPTED` 会被误判成**确定**的 `WRONG_PASSWORD`，于是状态机跳过 `EXTRACT_FAILED_AMBIGUOUS` 直奔 `WAITING_FOR_PASSWORD`——把「也可能是数据损坏」这一半信息丢掉，而那正是本节反复强调要保留的。
+
 对那条模糊项的消歧（确定性，不猜）：
 
 - 密码库里**根本没有**该条目 → 直接 `WAITING_FOR_PASSWORD`，不需要消歧。
