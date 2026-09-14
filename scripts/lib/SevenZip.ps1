@@ -32,6 +32,18 @@ function Invoke-SevenZip {
     .OUTPUTS
         ExitCode / TimedOut / Stdout / FilesReported / FoldersReported / Warnings / Entries / ArchiveInfo / Argv
     #>
+    # PSScriptAnalyzer 会对 [string]$Password 报 PSAvoidUsingPlainTextForPassword。
+    # **这里是刻意的，不是疏忽**，理由写在下面，所以显式豁免而不是让它变成常驻噪音
+    # （常驻告警会掩盖以后真正该看的那条）：
+    #   · 7-Zip **只能**经 -p 接受密码（官方 password.htm 只有这一种语法，
+    #     管道/文件重定向/环境变量均实测证伪）→ 明文进程命令行不可消除
+    #   · §6.3 的等价展开要做 UTF-8↔GBK 的**字节**转换，本身就必须拿到明文，
+    #     SecureString 在这个边界上买不到任何实际收益，只会把解包点往前挪一格
+    #   · 这条暴露面已在 §9.1 作为「不可控」诚实写明，并给出了可控的那一半：
+    #     不进清单/日志/报告/Git，Argv 写日志前必过 Get-GfRedactedArgv
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute(
+        'PSAvoidUsingPlainTextForPassword', 'Password',
+        Justification = '7-Zip 只接受命令行 -p；§6.3 的等价展开本就需要明文。暴露面见 §9.1。')]
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][ValidateSet('l','t','x')][string]$Op,
