@@ -135,8 +135,11 @@
 | 4.2 `DELIVERING` + `WAITING_FOR_DESTINATION` | 状态机 | `destination_root` 为 `null` 时停在等待态，`gf-deliver -To` 解除 |
 | 4.3 `destination_root` 校验 | `New-Batch.ps1` | 卷存在且 NTFS、可写、不在 OneDrive / `Program Files` 下、**按投递那一条算预算**；报告开头回显 |
 | 4.4 `.gameflow\` 迁移 | 同上 | 随目录搬走，搬完回写新绝对路径 |
+| 4.5 **终态核验 F1–F6** | 同上 | 六条全过才进 `COMPLETE`（SPEC §6.14）：目标无归档、枢纽侧已消失、staging 已回收、`_inbox` 无残留、源包全删、目标无临时物 |
 
-**反向判据**：目标已存在同名目录 → **不覆盖不合并**，落 `BLOCKED_RESOURCE`，枢纽那份原封不动。跨卷复制中途强杀 → 枢纽那份仍然完整。
+**F1 必须用容器白名单 + 扩展名排除表**，不能用「7z 能不能打开」——`.pak` / `.apk` / `.jar` / `.docx` 本来就是 zip 格式，用错判据会让任何带 `.pak` 的 Unity 游戏永远卡在核验不过。
+
+**反向判据**：目标已存在同名目录 → **不覆盖不合并**，落 `BLOCKED_RESOURCE`，枢纽那份原封不动。跨卷复制中途强杀 → 枢纽那份仍然完整。带 `.pak` 的真实 Unity 游戏投递后必须能过 F1。
 
 完整验收见 SPEC §10.3.5。
 

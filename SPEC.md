@@ -108,6 +108,7 @@
   - [6.11 文件名编码修复](#611-文件名编码修复)
   - [6.12 护栏（**本小节是护栏阈值语义的权威；默认值一律登记在 §3.2.3 的 `guards`**）](#612-护栏本小节是护栏阈值语义的权威默认值一律登记在-323-的-guards)
   - [6.13 不进自动流程的形态（**本小节是这一判定的唯一权威；§5.4.4 引用本小节**）](#613-不进自动流程的形态本小节是这一判定的唯一权威544-引用本小节)
+  - [6.14 终态清理与核验（F1–F6）](#614-终态清理与核验f1f6)
 - [§7 执行体 C：前台（会话模型、三类网盘适配、MTool、人工接力点清单）](#7-执行体-c前台会话模型三类网盘适配mtool人工接力点清单)
   - [7.0 下载这一步不归 C：主路径是人工排队（用户裁定，2026-09-14）](#70-下载这一步不归-c主路径是人工排队用户裁定2026-09-14)
   - [7.1 会话模型](#71-会话模型)
@@ -341,7 +342,7 @@ C3（源包与本体同目录）+ C4（解压后自动删除源包）合起来�
 
 > 编号书写约定（供全篇统一）：删除判据写 `D1`–`D12`（无连字符）；§12 决策台账写 `D-NN`（带连字符）。两者不同。
 
-**两段式删除的定案（尺寸门控）。** `retention.trash_days = 3`、`retention.trash_max_bytes = 2 GiB`（两个字段与默认值登记在 §3）。**小于**阈值的源包先移入 `games\<dirname>\.gameflow\trash\`，`trash_days` 天后由执行体 B 清理；**大于等于**阈值的直接删除。
+**两段式删除的定案（尺寸门控，默认关闭）。** `retention.trash_days = 0`（**不留 trash，验证通过即真删**）、`retention.trash_max_bytes = 2 GiB`（两个字段与默认值登记在 §3）。**小于**阈值的源包先移入 `games\<dirname>\.gameflow\trash\`，`trash_days` 天后由执行体 B 清理；**大于等于**阈值的直接删除。
 
 **为什么是尺寸门控而不是一刀切：误判概率最高的恰恰是小包**——纯文本汉化补丁既是压缩比 133x 触 `ratio_warn` 的那一类（合法但告警），也最容易命中 `EXTRACTED_NO_CONTENT` 的边界；而与磁盘余量护栏（§6.12）的冲突只在**大包**上成立。同卷移动是元数据操作，磁盘代价有硬上限（阈值 × 批次条目数）。**C4 语义仍然满足**：源包在游戏目录里自动消失、不需要任何人工动作，改变的只是物理删除的时刻；设 `retention.trash_days = 0` 即回到字面意义的 C4。
 
@@ -1342,7 +1343,7 @@ item.id 正则：^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$          长度 1..32
     },
 
     // retention：两段式删除（§6.8.4 执行；仍列为 §12 待用户拍板项）
-    "retention": { "trash_days": 3, "trash_max_bytes": 2147483648 }
+    "retention": { "trash_days": 0, "trash_max_bytes": 2147483648 }   // 0 = 不留 trash，验证通过即真删
   },
 
   // ── items ────────────────────────────────────────────────────
@@ -1432,6 +1433,7 @@ Merge(defaults, item) -> effective_item:
 | `created_at` | string | ✅ | ISO 8601 `o` 格式，UTC |
 | `created_by` | string | ✅ | `human` \| `codex` |
 | `destination_root` | string \| null | ✅ | 投递目标根，**可为 `null`**（此时停 `WAITING_FOR_DESTINATION`，之后用 `gf-deliver` 指定）。**自由填写绝对路径，不要求预先登记**；`New-Batch.ps1` 只校验：卷存在且为 NTFS、可写、不在 OneDrive / `Program Files` 下、MAX_PATH 预算过关，并在报告开头**回显一次**。写错最多是解到意外位置——它**永不进 I6 的删除白名单**，不会丢数据（§2.9） |
+| `product_archive_exempt` | array\<string\> | ✅ | 相对游戏根的 glob 列表，声明「这些归档是游戏自带内容，F1 核验放行」（§6.14）。**默认空数组**；每条都要人显式写、进 Git。不提供任何自动学习 |
 | `download_mode` | string | ✅ | `manual`（默认）\| `computer_use`。谁来完成「转存 + 开始下载」，见 §7.0。可被 `items[].download_mode` 逐条目覆盖 |
 | `group` | string | ✅ | 游戏落地的分组段：`<hub_root>\<group>\<dirname>\`。**默认 `"games"`**；按月/按题材归档时填 `"202609"` 这类。**不得以 `_` 开头、不得等于 `batches`**（与枢纽根下的固定目录撞名），不得含路径分隔符。它计入 MAX_PATH 预算，见 §2.5.3a |
 | `hub_root` | string | ✅ | 绝对路径，**必须是本机 `gameflow.config.json` 已登记枢纽根之一**（精确匹配，大小写不敏感，不做路径规范化后的等价判断）；不在集合里时 A/B **拒绝处理整个批次**并在报告里报错。**一个批次只能落在一个枢纽根里**（批内统一），跨枢纽根请拆成两个批次 |
@@ -2691,7 +2693,7 @@ Recover(itemDir, actor):
 | M09 | `EXTRACTED` → `SCANNED` | 三条**全部**成立：① 源包删除账已平——每个 `consumed_by` 非空的包都有删除事实且 `result ∈ {deleted, already_absent, retained}` ② 整树 `Unblock-File` 完毕 ③ `manifest.stage1_snapshot` 已写 | B | `Unblock-File` 官方明文幂等、对未标记文件无副作用【官方】；**MOTW 不得作为安全边界**；本步不再做任何威胁裁决（已在 M08 之前完成） |
 | M10 | `SCANNED` → `READY_FOR_TRANSLATION` | 批次条目 `translation.mode != none` | B | 引擎判定事实已落盘；`engine.game_root` 指向含引擎标记文件的那一层，**不假定等于 `games\<dirname>\`**（判定表见 §7.6） |
 | M11 | `SCANNED` → `COMPLETE` | 批次条目 `translation.mode == none` | B | 同 M10 的 manifest 完整性要求 |
-| M15 | `DELIVERING` → `COMPLETE` | 整目录移动成功，目标体积与源一致，`state.json` 已记下新绝对路径 | B | 同卷 = rename（O(1)）；跨卷 = 复制+删除源，耗时与体积成正比。**失败不删源**，枢纽那份原封不动（§2.9.4） |
+| M15 | `DELIVERING` → `COMPLETE` | 整目录移动成功 ∧ 目标体积与源一致 ∧ `state.json` 已记下新绝对路径 ∧ **§6.14 的 F1–F6 六条核验全过** | B | 同卷 = rename（O(1)）；跨卷 = 复制+删除源，耗时与体积成正比。**失败不删源**，枢纽那份原封不动（§2.9.4） |
 | H31 | `SCANNED` / `TRANSLATING` / `TRANSLATION_NOT_APPLICABLE` → `WAITING_FOR_DESTINATION` | `destination_root` 为 `null` | B | 不是错误，是**正常的等待**：游戏已完工、待在枢纽里，等你用 `gf-deliver -To <路径>` 指定去处。可以先看看解出来是什么再定 |
 | M12 | `READY_FOR_TRANSLATION` → `TRANSLATING` | 人显式触发前台会话（C），且 `mtool-profiles\<item-id>.json` 存在且 `target_exe` 非 `ambiguous` | C | MOTW 已 `Unblock-File`（**是前置条件不是收尾**）——忘了会让 Computer Use 撞上 SmartScreen 的前台模态框而卡死【社区】；若 `version.dll` 已存在 → 判定已处理，**不重复注入**，直接走 M14 |
 | M13 | `READY_FOR_TRANSLATION` → `TRANSLATION_NOT_APPLICABLE` | `engine ∈ {Unity, Godot, Unreal}`——MTool 官网与 Patreon 两个独立来源的引擎清单都没有这三者【官方】 | B / C | `engine != UNKNOWN`——`UNKNOWN` 走 H22，**不判不支持** |
@@ -5108,7 +5110,7 @@ if |content_files| == 0:
 | 项 | 值 |
 |---|---|
 | 开关 | `retention.trash_days`、`retention.trash_max_bytes`（默认值登记在 §3.2.3） |
-| **默认** | `trash_days = 3`、`trash_max_bytes = 2 GiB` |
+| **默认** | `trash_days = **0**`（不留 trash）、`trash_max_bytes = 2 GiB`（仅当 `trash_days > 0` 时才有意义）|
 | 语义 | 源包字节数 **< `trash_max_bytes`** → 先移入 `games\<dirname>\.gameflow\trash\`，`trash_days` 后由 **B** 在下一次运行开始时清理；**≥ 阈值** → 验证通过后直接真删 |
 | 为什么按尺寸分段 | 误判概率最高的恰恰是**小包**：纯文本汉化补丁既是压缩比 133x 触 `ratio_warn` 的那一类，也最容易命中 `EXTRACTED_NO_CONTENT` 边界；而磁盘冲突只在大包成立。同卷移动是元数据操作，成本接近零，磁盘代价有硬上限（`trash_max_bytes × 待清理条目数`，并已计入 §6.12.5 的 `trash_pending_bytes`） |
 | 与 C4 的关系 | **C4 仍满足**：源包在游戏目录里自动消失、无需任何人工动作，只是**小包的物理删除时刻推迟** `trash_days` 天。设 `trash_days = 0` 即回到字面 C4 |
@@ -5460,6 +5462,34 @@ $ 7zz x selfext.exe    -> exit 0，4 个文件全部正确解出
 > 锁定决策要求「`-DisableRemediation` 二选一必须显式选」，本节选了 `-DisableRemediation`，理由充分（它忽略排除目录，是「只排 `_stg` + 显式预检」这套组合成立的关键）。但这条选择的**全部可行性**押在一个【待测】项上——该模式下 stdout 是唯一信号，而 stdout 格式没人验证过。
 > 我在 §6.9.3 用「Preflight 拿 EICAR 跑一次解析器自检，不过就落 `THREAT_SUSPECTED` 而不是静默放行」把这个未知变成了运行期可检测的条件，所以设计不会悄悄失效。但建议 §11 把 #6 的优先级提到**与 #1（环境快照）同级**：它不是「锦上添花」，它是本节唯一一条「不实测就写不出代码」的依赖。
 
+
+---
+
+### 6.14 终态清理与核验（F1–F6）
+
+用户 2026-09-14 的要求：**投递完成后，目标目录里只有游戏，别处不留任何属于这个条目的残留，所有压缩包都已删除。**
+
+这不是一句愿望，是 `DELIVERING → COMPLETE`（M15）的**前置条件**。六条核验全过才进终态：
+
+| # | 核验 | 怎么判 | 不过怎么办 |
+|---|---|---|---|
+| **F1** | 目标目录内**不存在归档** | 递归扫描，按**内容嗅探**（`container-types.json` 的白名单 + 扩展名排除表，§3.6.3），**不按扩展名**。排除表在这里是必需的——`.pak` / `.apk` / `.jar` / `.docx` 这类本来就是 zip 格式，游戏自带它们是正常的 | `BLOCKED_RESOURCE` / `ARCHIVE_IN_PRODUCT`，报告列出具体路径 |
+| **F2** | 枢纽侧该条目目录**已不存在** | 跨卷投递后 `<hub_root>\games\<dirname>\` 应已删除（同卷投递是 rename，天然不存在） | `BLOCKED_RESOURCE` / `RESIDUE_NOT_RECLAIMED` |
+| **F3** | 该条目的 staging **已回收** | `state.json` 里记过的每个 `_stg\<8hex>\` 与 `_stg\<8hex>-p\` 都不存在 | 同上 |
+| **F4** | `_inbox` 内**无该条目残留** | 按 `expected_files[].name` 与卷集组名匹配，不应再有命中 | 同上 |
+| **F5** | 源包**已全部删除** | `state.json` 的 `archives[]` 每一项 `deleted_at` 非空，且该路径确实不存在；`trash_days = 0` 时 `trash\` 里也不应有它们 | 同上 |
+| **F6** | 目标目录内**无临时物** | 无 `*.tmp-*`、无 0 字节的 7z 残骸、无 attempt 目录 | 同上 |
+
+**F1 的排除表为什么是必需的**：`7z` 能打开的东西远多于「我们要递归解包的容器」——Windows 上每个 `.exe` / `.dll` 都是 PE「归档」，`.docx` / `.xlsx` / `.apk` / `.jar` / `.epub` 都是 `Type = zip`。若 F1 用「7z 能不能打开」当判据，**任何一个带 `.pak` 的 Unity 游戏都会永远卡在核验不过**。这是扩展名唯一真正有用的场合：不是识别要解什么，而是排除不该解什么。
+
+**F1 命中时的人工动作有两种，报告必须同时给出**：
+
+1. **它是解包没做完** —— 说明 D8 漏了，回 `EXTRACTING` 重来（这是默认假设）
+2. **它是游戏自带内容** —— 在批次条目里加一条 `product_archive_exempt: ["extras/*.zip"]` 声明后重跑。**声明是显式的、per-item 的、进 Git 的**，不是让脚本自己学会「这个游戏可以有 zip」
+
+**清理失败通常是文件被占用**（杀软正在扫、资源管理器开着那个目录、游戏已经被启动过）。这类失败**可重试**：落 `BLOCKED_RESOURCE / RESIDUE_NOT_RECLAIMED` 之后下一轮 B 会再试一次，不需要人工干预；连续失败才需要你去看是谁占着。
+
+**所有 F 系清理动作仍受 I6 路径围栏**——删除目标必须在 `hub_root` 之内。F1 和 F6 检查的是目标目录，但**它们只报告、不删除**：目标目录永远不在删除白名单里（§2.9.2）。目标目录里的残留要你自己清，或者重跑投递。
 
 ---
 
@@ -8088,6 +8118,8 @@ pwsh -NoProfile -File D:\GameFlow\scripts\Invoke-Deliver.ps1 -BatchId 2026-01-01
 | **D-41** | 每个游戏的状态与日志放哪 | **跟着游戏走**：`<游戏目录>\.gameflow\`，投递时随目录一起搬，搬完在 `state.json` 记下新的绝对路径 | ① 集中放枢纽 `state\<batch-id>\<item-id>\`；② 拆开（热状态入枢纽、manifest 跟游戏） | 用户 2026-09-14 选择。好处是状态永远不与数据脱节，游戏文件夹自带来源记录（搬到哪都能查清它从哪来、SHA-256 是多少、引擎判定结果）。代价是每个游戏目录多一个隐藏子目录 | 用户裁定 |
 | **D-42** | 目标路径要不要预先登记 | **不要求**。批次里自由填绝对路径，`New-Batch.ps1` 只校验（卷存在且 NTFS、可写、不在 OneDrive / `Program Files` 下、MAX_PATH 预算过关）并在报告开头回显一次 | 像 `hub_roots` 那样要求从已登记集合里选（D-33 对枢纽根的做法） | 用户 2026-09-14 选择，且**在枢纽模型下这是安全的**：`destination_root` 永不进 I6 的删除白名单，B 对它只有写权限没有删权限。路径写错最多是成品投递到意外位置——可恢复的麻烦，不是数据丢失。而枢纽根仍然要求登记，因为那里**有**删除权限 | 用户裁定 + I6 |
 
+| **D-43** | 终态的"干净"是否可核验 | **是，F1–F6 六条核验是 `DELIVERING → COMPLETE`（M15）的前置条件**（§6.14）：目标目录无归档（按内容嗅探 + 扩展名排除表）、枢纽侧目录已消失、staging 已回收、`_inbox` 无残留、源包全部已删、目标目录无临时物。同时 `retention.trash_days` 默认从 `3` 改为 **`0`**（不留 trash，验证通过即真删）| ① 投递成功即进 `COMPLETE`，清理靠"应该没问题"；② 用 `7z 能不能打开` 当 F1 的判据 | 用户 2026-09-14：「投递完成进入正确目录后没用的重复文件应确保都删除，所有游戏压缩包也要都删除」。「确保」只能靠**可编程的核验**，不能靠流程假设——所以做成 M15 的前置条件而不是一句叮嘱。方案② 会让**任何带 `.pak` 的 Unity 游戏永远卡在核验不过**（`.pak`/`.apk`/`.jar`/`.docx` 本来就是 zip 格式），所以 F1 必须用容器白名单 + 扩展名排除表。游戏自带归档的情形由 per-item 的 `product_archive_exempt` 显式声明放行，**不提供自动学习** | 用户裁定 + 【实测】7z 对非归档文件的识别行为 |
+
 
 ### 12.2 待用户拍板项
 
@@ -8095,7 +8127,7 @@ pwsh -NoProfile -File D:\GameFlow\scripts\Invoke-Deliver.ps1 -BatchId 2026-01-01
 
 #### 两段式删除：`retention.trash_days` / `retention.trash_max_bytes`
 
-**当前默认：`trash_days = 3`、`trash_max_bytes = 2 GiB`（尺寸门控的两段式）。**
+**当前默认：`trash_days = 0`（不留 trash，验证通过即真删）、`trash_max_bytes = 2 GiB`（仅当 `trash_days > 0` 才有意义）。**
 源包字节数 **< 2 GiB** → 先移入 `games\<dirname>\.gameflow\trash\`，3 天后由 B 清理；**≥ 2 GiB** → 验证通过后直接真删。
 
 选这个默认值的理由是**误判概率与磁盘代价的分布不重合**：
@@ -8108,14 +8140,14 @@ pwsh -NoProfile -File D:\GameFlow\scripts\Invoke-Deliver.ps1 -BatchId 2026-01-01
 
 | 你可以怎么调 | 后果 |
 |---|---|
-| **保持默认**（`3` / `2 GiB`） | 小包有 3 天后悔窗口；大包仍是删了就没了 |
-| **`trash_days = 0`** | 回到 **C4 的字面语义**：一律立即删除、不可撤销、无回收站兜底。D1–D12 判错一次即永久数据丢失 |
+| **保持默认**（`trash_days = 0`） | **C4 的字面语义**：一律立即删除、不可撤销、无回收站兜底。D1–D12 判错一次即永久数据丢失。§6.14 的 F5 会核验「源包确实全没了」 |
+| **`trash_days = N > 0`** | 小于 `trash_max_bytes` 的源包有 N 天后悔窗口；大包仍是删了就没了。代价是磁盘与一个清理器 |
 | **调大 `trash_max_bytes`** | 更多包进 trash，拿磁盘换后悔窗口。调到大于最大游戏包 = 全部两段式 |
 | **调大 `trash_days`** | 后悔窗口更长，trash 占盘时间线性增长 |
 
 **必须签收的代价（无论怎么调都消不掉）**：走直接删除的那部分包，判错就是**永久丢失**。唯一补救是 `manifest.json` 里删除前写下的 SHA-256——它只能告诉你"重新下载的是不是同一个包"，**并不保证你还能下到**（资源站失效、分享链接过期、网盘和谐都很常见）。
 
-**实施建议**：M2 阶段 `delete_archives = false` 先跑若干真实批次、积累对账证据，确认 D1–D12 在你的实际资源上不误判，再在 M3 打开删除。
+**实施建议**：M2 阶段 `delete_archives = false` 先跑若干真实批次、积累对账证据，确认 D1–D12 在你的实际资源上不误判，再在 M3 打开删除。**如果你想要一个过渡期的安全网**，就在 M3 把 `trash_days` 临时设成 3 跑几批，稳了再调回 0。
 
 ---
 
