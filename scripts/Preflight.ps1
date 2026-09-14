@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     GameFlow 环境探测（PLAN 阶段 0.1 / 0.2，SPEC §9.11）。
 

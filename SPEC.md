@@ -6698,6 +6698,16 @@ Codex 桌面 App 的计划任务能力**是真实存在的**（*"scheduled tasks
 
 #### 8.8.2 编码约定（本项目最容易造成真实数据损坏的一条）
 
+> **先分清两件事，它们的答案相反**（2026-09-14 实证补充）：
+>
+> | 对象 | 编码 | 给谁看 | 依据 |
+> |---|---|---|---|
+> | **源码 `.ps1`** | UTF-8 **带 BOM** | Windows PowerShell **5.1 的解析器** | 5.1 把**无 BOM** 的 `.ps1` 按**系统 ANSI** 解码。ACP=936 的机器上，源码里的中文字符串会直接变乱码，而且形态是「脚本照跑、只是输出全乱」——最难察觉的那种 |
+> | **数据文件**（`.json` / `.jsonl` / 报告） | UTF-8 **无 BOM** | 别的程序与 diff 工具 | 见下表 |
+>
+> 这条是被 `PSScriptAnalyzer` 的 `PSUseBOMForUnicodeEncodedFile` 规则在本项目自己的 `Preflight.ps1` 上抓到的——**写 SPEC 的人自己也踩了 §8.8.2**。`tests\Invoke-Lint.ps1` 现在会对每个含非 ASCII 的 `.ps1` 强制检查 BOM，`-FixBom` 可自动补。
+
+
 5.1 的三个默认值**全是错的**，而且错得很安静【官方 about_Character_Encoding】https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_character_encoding ：
 
 | 写法 | 5.1 实际编码 | 7.x 实际编码 | 后果 |

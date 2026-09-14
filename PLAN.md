@@ -66,7 +66,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Preflight.ps1 `
 
 | 模块 | 职责 | 最容易写错的地方（SPEC 出处） |
 |---|---|---|
-| `Io.ps1` | UTF-8 无 BOM 读写、`-LiteralPath` 强制 | 5.1 的 `-Encoding utf8` 带 BOM、裸 `>` 是 UTF-16LE、`Get-Content` 按 ANSI 解码中文（§8.8.2）。**这是最容易造成真实数据损坏的一条** |
+| `Io.ps1` | UTF-8 读写（**数据文件无 BOM**，与源码 `.ps1` 带 BOM 相反，见 §8.8.2）、`-LiteralPath` 强制 | 5.1 的 `-Encoding utf8` 带 BOM、裸 `>` 是 UTF-16LE、`Get-Content` 按 ANSI 解码中文（§8.8.2）。**这是最容易造成真实数据损坏的一条** |
 | `Json.ps1` | 读写 JSON | 裸 `ConvertTo-Json` 默认 `-Depth 2`，第 4 层被静默截断；一律显式 `-Depth 10`（§8.8.3） |
 | `Journal.ps1` | `events.jsonl` 追加 + 重放重建 `state.json` | 必须 `-Compress`；整行一次 `Write` + `Flush($true)` + 立即关闭；读取端丢弃尾部半行；**按文件行序重放，不按 `seq` 排序**（§3.3、§8.8.5） |
 | `Lock.ps1` | 批次锁 + 条目锁 | `FileShare.None` 独占句柄；**不要**用 lock 文件 + PID 检测（§8.8.6） |
@@ -74,6 +74,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Preflight.ps1 `
 | `SevenZip.ps1` | 唯一的 7z 封装 | `exit == 0` 严格相等（`1` 是"有文件被静默跳过"）；每包单独调用；**永不传具体 `-t` 类型名**；stdin 重定向 + 超时（§6.2.1） |
 
 **完成判据**：每个模块有对应的 fixture 测试且全绿。`Paths.ps1` 的 `dirname` 算法要用日文标题、含 `:` `?` 的标题、超长标题、保留设备名（`NUL.txt`）各跑一遍。
+
+**每写完一个模块跑一次 `tests\Invoke-Lint.ps1`**（解析 + 5.1 兼容性 + BOM 三项静态检查）。这是开发机上能做的全部验证——本项目绝大多数代码无法在 macOS 执行。
 
 **先把 `tests\fixtures\` 从调研产物拷过来**——`lab7z/`、`lab/`、`fixtures/` 里已经造好了带密码的、多重嵌套的、分卷的、伪装扩展名的、Shift-JIS 名的、路径穿越的样本，直接可用。
 
