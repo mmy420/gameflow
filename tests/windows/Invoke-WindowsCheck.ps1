@@ -121,7 +121,9 @@ $ctx = [ordered]@{
 }
 foreach ($v in (Get-ChildItem Env: | Where-Object { $_.Name -like 'CODEX*' })) {
     $entry = [ordered]@{ name = $v.Name }
-    if ($v.Name -match 'SANDBOX') { $entry.value = $v.Value }   # 模式标志，非机密
+    # 只记**模式类**变量的值（非机密）。PERMISSION_PROFILE 是 2026-09-29 第一次 Windows 实测
+    # 后补的：不知道 Codex 当时是不是沙盒模式，W9 的「能写」就说明不了 writable_roots 生没生效
+    if ($v.Name -match 'SANDBOX|PERMISSION' -or $v.Name -in @('CODEX_SHELL','CODEX_VERSION')) { $entry.value = $v.Value }
     $ctx.codex_env += $entry
 }
 try {
@@ -182,18 +184,37 @@ Invoke-Check 'W1_preflight' '[W1] 环境快照（Preflight）...' {
 Invoke-Check 'W2_unit_tests' '[W2] 单元测试（powershell 5.1 / pwsh 各一遍）...' {
     $runner = Join-Path $repo 'tests\Invoke-AllTests.ps1'
     $res = [ordered]@{}
+    # 三个宿主：5.1、PATH 上的 pwsh、系统装的 pwsh。在 Codex 里跑时 PATH 上的 pwsh 是
+    # **Codex 自带的运行时**（第一次实测发现），计划任务里用的是系统装的那个 —— 两者不同就都测
+    $hosts = [ordered]@{}
     foreach ($h in @('powershell','pwsh')) {
-        $exe = Get-Command "$h.exe" -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
-        if (-not $exe) { $res[$h] = [ordered]@{ present = $false }; continue }
-        $out = & $exe.Source -NoProfile -ExecutionPolicy Bypass -File $runner 2>&1
+        $c = Get-Command "$h.exe" -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+        $hosts[$h] = $(if ($c) { $c.Source } else { $null })
+    }
+    $sysPwsh = "$env:ProgramFiles\PowerShell\7\pwsh.exe"
+    if ((Test-Path -LiteralPath $sysPwsh) -and $sysPwsh -ne $hosts['pwsh']) { $hosts['pwsh_system'] = $sysPwsh }
+    foreach ($h in @($hosts.Keys)) {
+        $exePath = $hosts[$h]
+        if (-not $exePath) { $res[$h] = [ordered]@{ present = $false }; continue }
+        $out = & $exePath -NoProfile -ExecutionPolicy Bypass -File $runner 2>&1
+        $exit = $LASTEXITCODE
         $txt = @($out | ForEach-Object { "$_" })
+        # 跳过与失败的总数单独成数：汇总行里「SKIP 11」一眼就能看见，而不是被 exit 0 盖住
+        $skipTotal = 0; $failTotal = 0
+        foreach ($l in $txt) {
+            $m = [regex]::Match($l, 'PASS \d+\s+SKIP (\d+)\s+FAIL (\d+)')
+            if ($m.Success) { $skipTotal += [int]$m.Groups[1].Value; $failTotal += [int]$m.Groups[2].Value }
+        }
         $res[$h] = [ordered]@{
-            present   = $true
-            exit_code = $LASTEXITCODE
+            present    = $true
+            path       = $exePath
+            exit_code  = $exit
+            skip_total = $skipTotal
+            fail_total = $failTotal
             # 汇总行只用 ASCII 匹配：子进程输出要过控制台代码页，中文在非 936 的
             # 机器上可能变成「?」，按中文匹配就会一行都抓不到
-            summary   = @($txt | Where-Object { $_ -match 'PASS \d+\s+FAIL \d+' })
-            # 除 PASS 行、空行、分隔线外全留：每个文件的标题、FAIL 明细、以及
+            summary   = @($txt | Where-Object { $_ -match 'PASS \d+.*FAIL \d+' })
+            # 除 PASS 行、空行、分隔线外全留：每个文件的标题、SKIP 及其原因、FAIL 明细、以及
             # 测试文件在 5.1 下根本加载不起来时的解析错误，都在这里面
             details   = @($txt | Where-Object { $_.Trim() -and $_ -notmatch '^\s*PASS\s' -and $_ -notmatch '^[\s─]+$' } |
                           Select-Object -First 150)
@@ -435,10 +456,11 @@ function Get-Brief { param($V)
         if ($x -is [bool] -or $x -is [int] -or $x -is [long] -or $x -is [double]) { $parts += "$k=$x" }
         elseif ($x -is [array]) { $parts += "$k.count=$($x.Count)" }
         elseif ($x -is [System.Collections.IDictionary]) {
-            foreach ($k2 in $x.Keys) { $y = $x[$k2]; if ($y -is [bool] -or $y -is [int]) { $parts += "$k.$k2=$y" } }
+            # 嵌套一层只取整数（W2 的 exit_code / skip_total / fail_total），三个宿主正好放得下
+            foreach ($k2 in $x.Keys) { $y = $x[$k2]; if ($y -is [int]) { $parts += "$k.$k2=$y" } }
         }
     }
-    ($parts | Select-Object -First 6) -join ' '
+    ($parts | Select-Object -First 9) -join ' '
 }
 Say ''
 Say '-------------------------------------------------------------'

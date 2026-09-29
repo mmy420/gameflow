@@ -43,11 +43,15 @@
 
 **怎么跑、交给 Codex 时发什么指令、跑的过程中观察什么，全部见 [`docs/WINDOWS-CHECK.md`](docs/WINDOWS-CHECK.md)。** 这里只记完成判据：
 
+> **进度（2026-09-29 第 1 次实测，详见 SPEC §11.3）**：W3 `PASS`；`Journal` / `Lock` / `Paths` 在 5.1 与 pwsh 下全过。
+> **还差**：本机没有 7-Zip（W4–W7 全部跳过、`SevenZip` 的 11 条集成用例没跑）；没有系统安装的 pwsh（PATH 上那个是 Codex 自带的）；没给 `-SampleGameDirs`；审批次数未回报。
+> 另有一个**待裁决**的设计问题：本机 Defender 防病毒没有在运行（§11 #29）。
+
 **完成判据**：
 
 - `windows-check.json` 的 `completed` 是 `true`（不是中途被杀的半份），`params.sample_game_dirs` 与你给的目录一一对应
 - W1 的 `archiver.sevenzip_path`、`hub.filesystem`、`codepage.acp`、`internal_paths.worst_E` 四个字段都有值
-- W2 在 5.1 下除 `SevenZip`（契约 SZ-4 规定它要 pwsh 7.4+）外全绿，在 pwsh 下全绿
+- W2 在 5.1 下全绿（`SevenZip` 的 11 条集成用例按契约 SZ-4 登记为 SKIP，另有 1 条验证它确实拒绝运行），在**系统安装的** pwsh 下全绿且 **SKIP 为 0**（SKIP 不为 0 说明 7-Zip 没找到）
 - W3 的 `verdict` 是 `PASS`（`INCONCLUSIVE` 要在普通终端重跑，`FAIL` 是阻塞性的）
 - 由 Codex 执行的那一次：记下了审批弹窗次数与弹窗里的命令原文（即原 #3 的答案）
 

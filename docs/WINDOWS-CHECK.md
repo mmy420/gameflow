@@ -9,6 +9,9 @@
 > - **每跑完一项就落一次盘**：被中断或超时杀掉，已跑完的项仍在
 > - 结果改由你发回 JSON 文件，Codex 只转述汇总（原因见下）
 >
+> 第三版（第 1 次实测之后，同日）：跳过的用例单独计 SKIP，不再混进 PASS；压缩软件改读卸载注册表；
+> 分清「Codex 自带的 pwsh」与系统安装的 pwsh；记录 Codex 的权限模式与已登记的杀软。**第 1 次的结论见 SPEC §11.3。**
+>
 > 第一版（同日）：修正 #3 的测法（原测法已被证明无效，见「第三部分」），修正 W3 的竞态，新增 W9 与执行上下文记录。
 
 ---
@@ -29,7 +32,17 @@
 
 ## 第一部分 · 交给 Windows 上的 Codex 执行（推荐）
 
-### 你先做四件事（约 3 分钟）
+### 你先做五件事（约 5 分钟）
+
+**⓪ 装两个必需的软件**（第 1 次实测发现都缺；装过的跳过）：
+
+```powershell
+winget install --id 7zip.7zip
+winget install --id Microsoft.PowerShell
+```
+
+- **7-Zip**：SPEC 的全部解压与校验判据都以 7-Zip 命令行为准，WinRAR / Bandizip 顶替不了。它的安装程序不改 PATH，没关系，脚本会去默认安装目录找。
+- **pwsh**：Codex 里能看到一个 pwsh，但那是 **Codex 自带的运行时**，只在 Codex 里可见。作业将来挂在 Windows 任务计划里跑，那里只有系统装的 pwsh。
 
 **① 拉代码**（在普通终端里）：
 
@@ -178,19 +191,23 @@ JSON 顶层还有三格，用来判断「这份结果本身靠不靠得住」：
 - `codepage.acp` → 936 的话**日文假名标题不会降级**（已在 macOS 实证：GBK 含完整假名区）；
   真正会降级的是韩文、emoji、GBK 未收的罕用字。
 - `internal_paths.worst_E` → 代进 §2.5.3a 的表，看你那个按月分组的布局还剩多少余量。
+- `archiver.installed` → 卸载注册表里的全部压缩软件（名称、版本、安装位置）。`sevenzip_found_via` 不是 `PATH` 时，作业要用绝对路径调它。
+- `powershell.pwsh_is_codex_bundled` 为 `true` → PATH 上那个 pwsh 是 Codex 自带的；看 `system_pwsh_path` 才是计划任务能用的。
+- `defender.status.antivirus_enabled` 为 `false` → Defender 防病毒没在运行，`av_products` 是登记在安全中心的杀软。这是 SPEC §11 #29 的输入。
 
 ### W2 · 单元测试在 5.1 与 pwsh 下各跑一遍
 
 **这是本次最重要的一项。** lib 六个模块至今**只在 macOS + pwsh 7.6 上跑过**，
 104 条用例全绿，但那说明的是「在我选的那条路上按我的意图工作」，**说明不了它在你那条路上能跑**。
 
-预期：
+预期（每个测试文件一行 `n 项：PASS a   SKIP b   FAIL c`，**SKIP 是跳过，不算通过**）：
 
-- `powershell`（5.1）：`Paths` / `Journal` / `Lock` 应当全绿。
-  **`SevenZip` 会失败**——它要求 pwsh 7.4+（`ProcessStartInfo.ArgumentList` 在
-  .NET Framework 上不存在），这是契约 SZ-4 明文规定的，失败信息应当是那句明确的抛错。
-- `pwsh`：全部应当全绿。若没装 pwsh，这一格是 `present: false`，
-  那么 **B 拒绝运行**（§9.11 规定不降级），需要装。
+- `powershell`（5.1）：全部 FAIL 0。`SevenZip` 的 11 条真 7z 集成用例登记为 **SKIP**——它要求 pwsh 7.4+
+  （`ProcessStartInfo.ArgumentList` 在 .NET Framework 上不存在，契约 SZ-4），另有 1 条
+  「SZ-4：5.1 上明确拒绝运行」验证它确实会拒绝，而不是退回拼命令行字符串。
+- `pwsh` / `pwsh_system`：全部 FAIL 0 且 **SKIP 0**。SKIP 不为 0 说明没找到 7-Zip。
+  在 Codex 里跑时 `pwsh` 是 Codex 自带的那个；系统装了 pwsh 且与它不同时，会多出 `pwsh_system` 一格——计划任务用的是它。
+  两格都没有，**B 拒绝运行**（§9.11 规定不降级），需要装。
 
 每个宿主记三格：`exit_code`、`summary`（每个测试文件一行 `PASS n FAIL n`）、`details`（除通过行以外的全部输出：文件标题、失败明细、以及测试文件在 5.1 下根本加载不起来时的报错）。
 

@@ -9,6 +9,7 @@
     用法：
         . "$PSScriptRoot\lib\GfTest.ps1"
         Test-Case '标题说明' { Assert-Equal '期望' '实际' }
+        Skip-Case '标题说明' '为什么跳过'        # 条件不具备时登记跳过 —— 绝不写成 Assert-True $true
         exit (Invoke-GfTestSummary)
 #>
 
@@ -25,6 +26,17 @@ function Test-Case {
     }
     [void]$script:GfTests.Add($script:GfCurrent)
     $script:GfCurrent = $null
+}
+
+function Skip-Case {
+    <#
+        登记一条**跳过**的用例。跳过不是通过：单独计数、单独显示、写明原因。
+        这条是被 Windows 实测抓出来的：没有 7z 时原来用一条 Assert-True $true 的
+        占位用例代替 11 条集成用例，汇总显示「20 项 PASS 20」—— 看上去全绿，
+        实际一条 7z 集成都没跑，而结果里没有任何痕迹。
+    #>
+    param([Parameter(Mandatory)][string]$Name, [Parameter(Mandatory)][string]$Reason)
+    [void]$script:GfTests.Add([ordered]@{ name = $Name; ok = $true; skipped = $true; reason = $Reason; msgs = @() })
 }
 
 function script:Fail { param([string]$Msg)
@@ -74,12 +86,15 @@ function Assert-Throws {
 
 function Invoke-GfTestSummary {
     param([string]$Title = '')
-    $pass = @($script:GfTests | Where-Object { $_.ok }).Count
+    $skip = @($script:GfTests | Where-Object { $_.Contains('skipped') }).Count
+    $pass = @($script:GfTests | Where-Object { $_.ok -and -not $_.Contains('skipped') }).Count
     $fail = @($script:GfTests | Where-Object { -not $_.ok }).Count
     Write-Host ''
     if ($Title) { Write-Host ("── {0} " -f $Title) -NoNewline; Write-Host ('─' * [Math]::Max(0, 58 - $Title.Length)) }
     foreach ($t in $script:GfTests) {
-        if ($t.ok) {
+        if ($t.Contains('skipped')) {
+            Write-Host ("  SKIP  {0}  ——  {1}" -f $t.name, $t.reason) -ForegroundColor Yellow
+        } elseif ($t.ok) {
             Write-Host ("  PASS  {0}" -f $t.name) -ForegroundColor Green
         } else {
             Write-Host ("  FAIL  {0}" -f $t.name) -ForegroundColor Red
@@ -88,7 +103,8 @@ function Invoke-GfTestSummary {
     }
     Write-Host ('─' * 60)
     $color = 'Green'; if ($fail -gt 0) { $color = 'Red' }
-    Write-Host ("  {0} 项：PASS {1}   FAIL {2}" -f $script:GfTests.Count, $pass, $fail) -ForegroundColor $color
+    if ($fail -eq 0 -and $skip -gt 0) { $color = 'Yellow' }
+    Write-Host ("  {0} 项：PASS {1}   SKIP {2}   FAIL {3}" -f $script:GfTests.Count, $pass, $skip, $fail) -ForegroundColor $color
     Write-Host ''
     if ($fail -gt 0) { return 1 } else { return 0 }
 }

@@ -15,6 +15,13 @@ foreach ($n in @('7zz','7z','7za')) {
     $c = Get-Command $n -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($c) { $script:Sz = $c.Source; break }
 }
+# 7-Zip 的 Windows 安装程序**不会**把自己加进 PATH —— 只查 PATH 的话，装好了也会被判成
+# 「没有 7z」，11 条集成用例全部 SKIP。与 Preflight 一致，再查默认安装目录。
+if (-not $script:Sz -and $env:OS -eq 'Windows_NT') {
+    foreach ($d in @($env:ProgramFiles, $env:ProgramW6432, ${env:ProgramFiles(x86)})) {
+        if ($d -and (Test-Path -LiteralPath (Join-Path $d '7-Zip\7z.exe'))) { $script:Sz = Join-Path $d '7-Zip\7z.exe'; break }
+    }
+}
 $script:Lab = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), 'gfsz-' + [Guid]::NewGuid().ToString('N').Substring(0,8))
 
 # ── 参数契约（不需要 7z）─────────────────────────────────────────────────────
@@ -152,92 +159,111 @@ Test-Case 'exit 2 分流：DATA_ERROR_ENCRYPTED 是**模糊**的，不得自行�
 
 # ── 真 7z 集成（有 7z 才跑）─────────────────────────────────────────────────
 
-if (-not $script:Sz) {
-    Test-Case '⚠ 跳过真 7z 集成用例（本机无 7z）' { Assert-True $true }
-} else {
+# SZ-4：本模块在没有 ProcessStartInfo.ArgumentList 的运行时（Windows PowerShell 5.1）
+# 上必须**明确拒绝运行**，不许退回拼命令行字符串。那里的集成用例登记为 SKIP，
+# 另有一条专门验证「确实会拒绝」—— 这样 5.1 下的全绿才有意义，而不是 11 条预期内的红。
+$script:HasArgList = [bool]([System.Diagnostics.ProcessStartInfo]::new().PSObject.Properties['ArgumentList'])
+$script:SkipReason = $null
+if (-not $script:HasArgList) { $script:SkipReason = 'SZ-4：本运行时没有 ProcessStartInfo.ArgumentList，本模块只在 pwsh 7.4+ 上运行' }
+elseif (-not $script:Sz)     { $script:SkipReason = '本机找不到 7z / 7zz / 7za' }
+
+function Test-Case7z { param([string]$Name, [scriptblock]$Body)
+    if ($script:SkipReason) { Skip-Case $Name $script:SkipReason } else { Test-Case $Name $Body }
+}
+
+if (-not $script:HasArgList) {
+    Test-Case 'SZ-4：5.1 上明确拒绝运行（抛错点在起进程之前，不需要真 7z）' {
+        $msg = $null
+        try { [void](Invoke-SevenZip -Op l -Archive 'C:\gf-sz4-probe.7z' -SevenZipExe 'C:\gf-sz4-probe\7z.exe') }
+        catch { $msg = $_.Exception.Message }
+        Assert-Match 'ArgumentList' $msg '必须是 SZ-4 那句明确的抛错，而不是别的失败'
+    }
+}
+
+if (-not $script:SkipReason) {
     [void][System.IO.Directory]::CreateDirectory([System.IO.Path]::Combine($script:Lab,'src','sub'))
     [System.IO.File]::WriteAllText([System.IO.Path]::Combine($script:Lab,'src','a.txt'), 'hello world')
     [System.IO.File]::WriteAllText([System.IO.Path]::Combine($script:Lab,'src','sub','b.txt'), ('x' * 5000))
     $plain = [System.IO.Path]::Combine($script:Lab,'plain.7z')
     & $script:Sz a -bso0 -bse0 $plain ([System.IO.Path]::Combine($script:Lab,'src')) | Out-Null
+}
 
-    Test-Case '真 7z：l -slt 能解析出归档级块与条目' {
-        $r = Invoke-SevenZip -Op l -Archive $plain -SevenZipExe $script:Sz
-        Assert-Equal 0 $r.ExitCode
-        Assert-Equal '7z' $r.ArchiveInfo['Type']
-        Assert-Equal 2 (Get-GfSevenZipFileEntryCount -Entries $r.Entries) '两个文件，目录不算'
-    }
+Test-Case7z '真 7z：l -slt 能解析出归档级块与条目' {
+    $r = Invoke-SevenZip -Op l -Archive $plain -SevenZipExe $script:Sz
+    Assert-Equal 0 $r.ExitCode
+    Assert-Equal '7z' $r.ArchiveInfo['Type']
+    Assert-Equal 2 (Get-GfSevenZipFileEntryCount -Entries $r.Entries) '两个文件，目录不算'
+}
 
-    Test-Case '真 7z：t 通过且 Files 与 l 的非目录条目数一致（SZ-3 第 3 条）' {
-        $l = Invoke-SevenZip -Op l -Archive $plain -SevenZipExe $script:Sz
-        $t = Invoke-SevenZip -Op t -Archive $plain -SevenZipExe $script:Sz
-        $n = Get-GfSevenZipFileEntryCount -Entries $l.Entries
-        Assert-Equal $n $t.FilesReported
-        Assert-True (Test-GfSevenZipSuccess -Result $t -ExpectedFileEntries $n).Ok
-    }
+Test-Case7z '真 7z：t 通过且 Files 与 l 的非目录条目数一致（SZ-3 第 3 条）' {
+    $l = Invoke-SevenZip -Op l -Archive $plain -SevenZipExe $script:Sz
+    $t = Invoke-SevenZip -Op t -Archive $plain -SevenZipExe $script:Sz
+    $n = Get-GfSevenZipFileEntryCount -Entries $l.Entries
+    Assert-Equal $n $t.FilesReported
+    Assert-True (Test-GfSevenZipSuccess -Result $t -ExpectedFileEntries $n).Ok
+}
 
-    Test-Case '真 7z：T1 —— 过滤器无匹配时 exit 0 但 Files: 0' {
-        $r = Invoke-SevenZip -Op t -Archive $plain -Filter 'no-such.xyz' -SevenZipExe $script:Sz
-        Assert-Equal 0 $r.ExitCode 'exit 居然是 0'
-        Assert-False (Test-GfSevenZipSuccess -Result $r).Ok 'SZ-3 必须把它判成失败'
-    }
+Test-Case7z '真 7z：T1 —— 过滤器无匹配时 exit 0 但 Files: 0' {
+    $r = Invoke-SevenZip -Op t -Archive $plain -Filter 'no-such.xyz' -SevenZipExe $script:Sz
+    Assert-Equal 0 $r.ExitCode 'exit 居然是 0'
+    Assert-False (Test-GfSevenZipSuccess -Result $r).Ok 'SZ-3 必须把它判成失败'
+}
 
-    Test-Case '真 7z：T5 —— 对不加密的包传 -p 无害' {
-        $r = Invoke-SevenZip -Op t -Archive $plain -Password '__sentinel__' -SevenZipExe $script:Sz
-        Assert-Equal 0 $r.ExitCode '探测阶段可以统一传非空哨兵值'
-    }
+Test-Case7z '真 7z：T5 —— 对不加密的包传 -p 无害' {
+    $r = Invoke-SevenZip -Op t -Archive $plain -Password '__sentinel__' -SevenZipExe $script:Sz
+    Assert-Equal 0 $r.ExitCode '探测阶段可以统一传非空哨兵值'
+}
 
-    Test-Case '真 7z：空密码时完全不传 -p（T5：裸 -p 会切进交互模式）' {
-        $r = Invoke-SevenZip -Op t -Archive $plain -Password '' -SevenZipExe $script:Sz
-        Assert-False (($r.Argv -join ' ') -match '(^| )-p') 'Argv 里不得出现 -p'
-        Assert-Equal 0 $r.ExitCode
-    }
+Test-Case7z '真 7z：空密码时完全不传 -p（T5：裸 -p 会切进交互模式）' {
+    $r = Invoke-SevenZip -Op t -Archive $plain -Password '' -SevenZipExe $script:Sz
+    Assert-False (($r.Argv -join ' ') -match '(^| )-p') 'Argv 里不得出现 -p'
+    Assert-Equal 0 $r.ExitCode
+}
 
-    Test-Case '真 7z：x 解到指定目录，产物齐全' {
-        $out = [System.IO.Path]::Combine($script:Lab,'out1')
-        $r = Invoke-SevenZip -Op x -Archive $plain -OutDir $out -SevenZipExe $script:Sz
-        Assert-Equal 0 $r.ExitCode
-        Assert-Equal 2 $r.FilesReported
-        Assert-True ([System.IO.File]::Exists([System.IO.Path]::Combine($out,'src','a.txt')))
-    }
+Test-Case7z '真 7z：x 解到指定目录，产物齐全' {
+    $out = [System.IO.Path]::Combine($script:Lab,'out1')
+    $r = Invoke-SevenZip -Op x -Archive $plain -OutDir $out -SevenZipExe $script:Sz
+    Assert-Equal 0 $r.ExitCode
+    Assert-Equal 2 $r.FilesReported
+    Assert-True ([System.IO.File]::Exists([System.IO.Path]::Combine($out,'src','a.txt')))
+}
 
-    Test-Case '真 7z：带密码的包 —— 密码对则通过' {
-        $enc = [System.IO.Path]::Combine($script:Lab,'enc.7z')
-        & $script:Sz a -bso0 -bse0 '-p正确密码' $enc ([System.IO.Path]::Combine($script:Lab,'src','a.txt')) | Out-Null
-        $r = Invoke-SevenZip -Op t -Archive $enc -Password '正确密码' -SevenZipExe $script:Sz
-        Assert-Equal 0 $r.ExitCode '中文密码往返正常'
-    }
+Test-Case7z '真 7z：带密码的包 —— 密码对则通过' {
+    $enc = [System.IO.Path]::Combine($script:Lab,'enc.7z')
+    & $script:Sz a -bso0 -bse0 '-p正确密码' $enc ([System.IO.Path]::Combine($script:Lab,'src','a.txt')) | Out-Null
+    $r = Invoke-SevenZip -Op t -Archive $enc -Password '正确密码' -SevenZipExe $script:Sz
+    Assert-Equal 0 $r.ExitCode '中文密码往返正常'
+}
 
-    Test-Case '真 7z：密码错 → exit 2，且文案可分流' {
-        $enc = [System.IO.Path]::Combine($script:Lab,'enc.7z')
-        $r = Invoke-SevenZip -Op t -Archive $enc -Password '错误密码' -SevenZipExe $script:Sz
-        Assert-Equal 2 $r.ExitCode
-        $reason = Get-GfSevenZipExit2Reason -Lines $r.Stdout
-        Assert-True ($reason -in @('WRONG_PASSWORD','WRONG_PASSWORD_HEADER','DATA_ERROR_ENCRYPTED')) `
-                    "应落在密码相关代码，实际 $reason"
-    }
+Test-Case7z '真 7z：密码错 → exit 2，且文案可分流' {
+    $enc = [System.IO.Path]::Combine($script:Lab,'enc.7z')
+    $r = Invoke-SevenZip -Op t -Archive $enc -Password '错误密码' -SevenZipExe $script:Sz
+    Assert-Equal 2 $r.ExitCode
+    $reason = Get-GfSevenZipExit2Reason -Lines $r.Stdout
+    Assert-True ($reason -in @('WRONG_PASSWORD','WRONG_PASSWORD_HEADER','DATA_ERROR_ENCRYPTED')) `
+                "应落在密码相关代码，实际 $reason"
+}
 
-    Test-Case '真 7z：不是归档 → exit 2 + NOT_ARCHIVE' {
-        $junk = [System.IO.Path]::Combine($script:Lab,'junk.bin')
-        [System.IO.File]::WriteAllText($junk, 'not an archive at all')
-        $r = Invoke-SevenZip -Op t -Archive $junk -SevenZipExe $script:Sz
-        Assert-Equal 2 $r.ExitCode
-        Assert-Equal 'NOT_ARCHIVE' (Get-GfSevenZipExit2Reason -Lines $r.Stdout)
-    }
+Test-Case7z '真 7z：不是归档 → exit 2 + NOT_ARCHIVE' {
+    $junk = [System.IO.Path]::Combine($script:Lab,'junk.bin')
+    [System.IO.File]::WriteAllText($junk, 'not an archive at all')
+    $r = Invoke-SevenZip -Op t -Archive $junk -SevenZipExe $script:Sz
+    Assert-Equal 2 $r.ExitCode
+    Assert-Equal 'NOT_ARCHIVE' (Get-GfSevenZipExit2Reason -Lines $r.Stdout)
+}
 
-    Test-Case '真 7z：内容嗅探 —— 伪装成 .mp4 的 7z 不传 -t 也能打开（U2）' {
-        $fake = [System.IO.Path]::Combine($script:Lab,'disguised.mp4')
-        [System.IO.File]::Copy($plain, $fake, $true)
-        $r = Invoke-SevenZip -Op l -Archive $fake -SevenZipExe $script:Sz
-        Assert-Equal 0 $r.ExitCode '默认 -t*:r 会按内容嗅探，改后缀绝大多数情况根本不需要'
-        Assert-Equal '7z' $r.ArchiveInfo['Type']
-    }
+Test-Case7z '真 7z：内容嗅探 —— 伪装成 .mp4 的 7z 不传 -t 也能打开（U2）' {
+    $fake = [System.IO.Path]::Combine($script:Lab,'disguised.mp4')
+    [System.IO.File]::Copy($plain, $fake, $true)
+    $r = Invoke-SevenZip -Op l -Archive $fake -SevenZipExe $script:Sz
+    Assert-Equal 0 $r.ExitCode '默认 -t*:r 会按内容嗅探，改后缀绝大多数情况根本不需要'
+    Assert-Equal '7z' $r.ArchiveInfo['Type']
+}
 
-    Test-Case '真 7z：超时会被 Kill 并标 TimedOut' {
-        # 用 0 秒超时逼它必然超时（进程还没跑完就被杀）
-        $r = Invoke-SevenZip -Op t -Archive $plain -TimeoutSec 0 -SevenZipExe $script:Sz
-        Assert-True $r.TimedOut '超时必须可观测 —— 后台挂死一个无输出的进程是最难发现的故障'
-    }
+Test-Case7z '真 7z：超时会被 Kill 并标 TimedOut' {
+    # 用 0 秒超时逼它必然超时（进程还没跑完就被杀）
+    $r = Invoke-SevenZip -Op t -Archive $plain -TimeoutSec 0 -SevenZipExe $script:Sz
+    Assert-True $r.TimedOut '超时必须可观测 —— 后台挂死一个无输出的进程是最难发现的故障'
 }
 
 if ([System.IO.Directory]::Exists($script:Lab)) { [System.IO.Directory]::Delete($script:Lab, $true) }

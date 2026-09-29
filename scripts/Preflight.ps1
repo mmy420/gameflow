@@ -106,12 +106,12 @@ $R.platform = Probe 'platform' {
     $os = Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue
     $caption = $null; $osver = $null; $build = $null
     if ($os) { $caption = $os.Caption; $osver = $os.Version; $build = $os.BuildNumber }
-    $isAdmin = $false; $sid = $null
+    # 不记用户 SID：它不参与任何判定，却会随结果文件进公开仓库（数据最小化）
+    $isAdmin = $false
     try {
         $id = [Security.Principal.WindowsIdentity]::GetCurrent()
         $isAdmin = (New-Object Security.Principal.WindowsPrincipal($id)
                    ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-        $sid = $id.User.Value
     } catch {}
     [ordered]@{
         is_windows     = ($env:OS -eq 'Windows_NT')
@@ -119,7 +119,6 @@ $R.platform = Probe 'platform' {
         version        = $osver
         build          = $build
         is_admin       = $isAdmin
-        user_sid       = $sid
         machine        = $env:COMPUTERNAME
     }
 }
@@ -127,15 +126,40 @@ $R.platform = Probe 'platform' {
 # ── PF-01 归档引擎（SPEC §6.2、D-17）──────────────────────────────────────────
 # E3 只说了「装了 7-Zip 或 WinRAR/Bandizip」，没指明哪个。7z.exe 缺席是硬阻塞。
 $R.archiver = Probe 'archiver' {
-    $sevenZip = Get-CmdPath '7z.exe'
-    if (-not $sevenZip) {
-        foreach ($c in @(
-            "$env:ProgramFiles\7-Zip\7z.exe",
-            "${env:ProgramFiles(x86)}\7-Zip\7z.exe",
-            "$env:LOCALAPPDATA\Programs\7-Zip\7z.exe")) {
-            if (Test-Path -LiteralPath $c) { $sevenZip = $c; break }
+    # 只查 PATH 不够：WinRAR / Bandizip 的安装程序从不把自己加进 PATH（2026-09-29
+    # Windows 实测暴露：用户说装了压缩软件，三项却全是 null）。读「应用和功能」背后的
+    # 卸载注册表 —— 装了什么、什么版本、装在哪，一次拿全，不靠猜路径。只读。
+    $installed = @()
+    foreach ($root in @('HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
+                        'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall',
+                        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall')) {
+        if (-not (Test-Path -LiteralPath $root)) { continue }
+        foreach ($k in @(Get-ChildItem -LiteralPath $root -ErrorAction SilentlyContinue)) {
+            $p = Get-ItemProperty -LiteralPath $k.PSPath -ErrorAction SilentlyContinue
+            $n = $p.DisplayName                      # 未开 StrictMode：没有这一项就是 $null
+            if ($n -and $n -match '7-Zip|NanaZip|WinRAR|Bandizip|PeaZip|360压缩|好压|快压') {
+                $installed += [ordered]@{ name = $n; version = $p.DisplayVersion; location = $p.InstallLocation }
+            }
         }
     }
+    # 按「PATH → 默认安装目录 → 卸载注册表里的安装位置」依次找，记下是从哪找到的
+    function Find-Exe { param([string]$Exe, [string[]]$Dirs, [string]$NameRx)
+        $c = Get-CmdPath $Exe
+        if ($c) { return @($c, 'PATH') }
+        foreach ($d in $Dirs) {
+            if ($d -and (Test-Path -LiteralPath (Join-Path $d $Exe))) { return @((Join-Path $d $Exe), 'default-dir') }
+        }
+        foreach ($e in $installed) {
+            if ($e.name -match $NameRx -and $e.location -and (Test-Path -LiteralPath (Join-Path $e.location $Exe))) {
+                return @((Join-Path $e.location $Exe), 'uninstall-registry')
+            }
+        }
+        return @($null, $null)
+    }
+    $szDirs = @("$env:ProgramFiles\7-Zip", "$env:ProgramW6432\7-Zip", "${env:ProgramFiles(x86)}\7-Zip", "$env:LOCALAPPDATA\Programs\7-Zip")
+    $sevenZip, $szVia = Find-Exe '7z.exe' $szDirs '^7-Zip'
+    $rarDirs = @("$env:ProgramFiles\WinRAR", "$env:ProgramW6432\WinRAR", "${env:ProgramFiles(x86)}\WinRAR")
+    $bzDirs  = @("$env:ProgramFiles\Bandizip", "$env:ProgramW6432\Bandizip", "${env:ProgramFiles(x86)}\Bandizip", "$env:LOCALAPPDATA\Bandizip")
     $ver = $null; $handlers = $null; $floorOk = $false; $recOk = $false
     if ($sevenZip) {
         # 7z 无 --version；第一行形如 "7-Zip 24.09 (x64) : Copyright ..."
@@ -159,9 +183,11 @@ $R.archiver = Probe 'archiver' {
         meets_hard_floor   = $floorOk
         meets_recommended  = $recOk
         handlers           = $handlers
-        winrar_path        = Get-CmdPath 'WinRAR.exe'
-        rar_cli_path       = Get-CmdPath 'Rar.exe'
-        bandizip_path      = Get-CmdPath 'Bandizip.exe'
+        sevenzip_found_via = $szVia       # PATH / default-dir / uninstall-registry —— 不在 PATH 上时 B 必须用绝对路径
+        winrar_path        = (Find-Exe 'WinRAR.exe'   $rarDirs 'WinRAR')[0]
+        rar_cli_path       = (Find-Exe 'Rar.exe'      $rarDirs 'WinRAR')[0]
+        bandizip_path      = (Find-Exe 'Bandizip.exe' $bzDirs  'Bandizip')[0]
+        installed          = $installed   # 卸载注册表里所有压缩软件（名称 / 版本 / 安装位置）
     }
 }
 
@@ -175,14 +201,34 @@ $R.powershell = Probe 'powershell' {
     if ($pwshVer) {
         try { $meets74 = ([version]("$pwshVer" -replace '-.*$') -ge [version]'7.4') } catch { $meets74 = $false }
     }
+    # PATH 上的 pwsh 可能是 **Codex 自带的运行时**（2026-09-29 Windows 实测：
+    # C:\Users\<u>\.cache\codex-runtimes\…\pwsh.exe）。它只在 Codex 的环境里排在 PATH 前面，
+    # 计划任务里没有它；指向它的绝对路径又等于依赖另一个程序的私有缓存 —— Codex 一更新就可能
+    # 悄悄失效。B 无人值守要的是**系统安装**的 pwsh，两者必须分开记。
+    $bundled = [bool]($pwsh -and $pwsh -match '\\codex-runtimes\\')
+    $sysPwsh = $null
+    foreach ($c in @("$env:ProgramFiles\PowerShell\7\pwsh.exe", "$env:ProgramW6432\PowerShell\7\pwsh.exe",
+                     "$env:LOCALAPPDATA\Microsoft\WindowsApps\pwsh.exe")) {
+        if ($env:OS -eq 'Windows_NT' -and (Test-Path -LiteralPath $c)) { $sysPwsh = $c; break }
+    }
+    if (-not $sysPwsh -and $pwsh -and -not $bundled) { $sysPwsh = $pwsh }   # 装在非默认位置、但在 PATH 上
+    $sysVer = $null
+    if ($sysPwsh -and $sysPwsh -eq $pwsh) { $sysVer = $pwshVer }
+    elseif ($sysPwsh) { $sysVer = (& $sysPwsh -NoProfile -c '$PSVersionTable.PSVersion.ToString()' 2>&1 | Select-Object -First 1) }
+    $sys74 = $false
+    if ($sysVer) { try { $sys74 = ([version]("$sysVer" -replace '-.*$') -ge [version]'7.4') } catch { $sys74 = $false } }
     [ordered]@{
         current_version  = $PSVersionTable.PSVersion.ToString()
         current_edition  = $PSVersionTable.PSEdition
         host_exe         = (Get-Process -Id $PID).ProcessName
-        pwsh_path        = $pwsh
+        pwsh_path        = $pwsh          # 当前进程 PATH 解析到的那个
         pwsh_version     = $pwshVer
         # 脚本内部可用 7.4 语义（前提是被 pwsh 执行）；但 Codex 那一层永远是 5.1
         pwsh_meets_74    = $meets74
+        pwsh_is_codex_bundled = $bundled
+        system_pwsh_path      = $sysPwsh  # 计划任务能用的那个；$null = 没装
+        system_pwsh_version   = $sysVer
+        system_pwsh_meets_74  = $sys74
     }
 }
 
@@ -285,12 +331,22 @@ $R.defender = Probe 'defender' {
             realtime_enabled = $s.RealTimeProtectionEnabled
             antivirus_enabled = $s.AntivirusEnabled
             engine_version   = $s.AMEngineVersion
+            running_mode     = $s.AMRunningMode        # Normal / Passive / …；较老的平台没有这一项
+            service_enabled  = $s.AMServiceEnabled
         }
+    } catch {}
+    # 登记在「Windows 安全中心」的杀软。2026-09-29 实测 Defender 防病毒没在运行
+    # （AntivirusEnabled=false、引擎 0.0.0.0）—— 要知道是谁接管了，还是被关掉了。只读。
+    $av = $null
+    try {
+        $av = @(Get-CimInstance -Namespace 'root/SecurityCenter2' -ClassName 'AntiVirusProduct' -ErrorAction Stop |
+                ForEach-Object { [ordered]@{ name = $_.displayName; state_hex = ('{0:X6}' -f [int]$_.productState) } })
     } catch {}
     try { $excl = @((Get-MpPreference -ErrorAction Stop).ExclusionPath) } catch {}
     [ordered]@{
         mpcmdrun_path  = $mp
         status         = $status
+        av_products    = $av             # state_hex 的中间两位 10 = 开、00 = 关（社区通行解读，非官方）
         exclusion_paths = $excl
         stg_excluded   = if ($excl) { [bool](@($excl) -contains ($HubRoot.TrimEnd('\') + '\_stg')) } else { $false }
         note = 'MpCmdRun 需提权运行（官方）；B 的计划任务要 -RunLevel Highest（§8.8.10）'
@@ -389,7 +445,10 @@ if ((Get-Val $P 'is_windows' $false) -ne $true) {
 $sz    = Get-Val $A 'sevenzip_path'
 $szVer = Get-Val $A 'sevenzip_version'
 if (-not $sz) {
-    Add-Finding FAIL 'PF-01' '找不到 7z.exe。WinRAR/Bandizip 的 GUI 顶替不了——SPEC 的全部退出码判据都以 7-Zip 命令行为准（§6.2）。装 7-Zip 并把它加进 PATH'
+    # 顺带说出**装了什么**：用户记得「装了压缩软件」，要让他一眼看出为什么还是不行
+    $have = @(Get-Val $A 'installed' @() | ForEach-Object { "$(Get-Val $_ 'name')" }) -join '、'
+    if (-not $have) { $have = '卸载注册表里没有任何压缩软件' } else { $have = "本机装的是：$have" }
+    Add-Finding FAIL 'PF-01' "找不到 7z.exe（$have）。WinRAR/Bandizip 的 GUI 顶替不了——SPEC 的全部退出码判据都以 7-Zip 命令行为准（§6.2）。装 7-Zip 25.01+：winget install --id 7zip.7zip"
 } elseif ((Get-Val $A 'meets_hard_floor' $false) -ne $true) {
     Add-Finding FAIL 'PF-01' "7-Zip $szVer 低于硬下限 25.01（解析不可信归档的内存安全漏洞，D-17）"
 } elseif ((Get-Val $A 'meets_recommended' $false) -ne $true) {
@@ -398,13 +457,17 @@ if (-not $sz) {
     Add-Finding PASS 'PF-01' "7-Zip $szVer"
 }
 
+# 按**系统安装**的 pwsh 判：B 走计划任务，计划任务里只有它（§9.11：没有就拒绝运行，不降级）
 $pwshVer = Get-Val $W 'pwsh_version'
-if (-not (Get-Val $W 'pwsh_path')) {
-    Add-Finding WARN 'PF-02' '没有 pwsh 7。脚本内部想用 7.x 语义就必须装；注意 Codex 那一层永远是 powershell.exe 5.1（§8.2.1）'
-} elseif ((Get-Val $W 'pwsh_meets_74' $false) -ne $true) {
-    Add-Finding WARN 'PF-02' "pwsh $pwshVer 低于 7.4"
+$sysVer  = Get-Val $W 'system_pwsh_version'
+if ((Get-Val $W 'system_pwsh_meets_74' $false) -eq $true) {
+    Add-Finding PASS 'PF-02' "pwsh $sysVer（系统安装：$(Get-Val $W 'system_pwsh_path')）"
+} elseif ($sysVer) {
+    Add-Finding FAIL 'PF-02' "系统装的 pwsh $sysVer 低于 7.4。B 拒绝运行（§9.11）：winget upgrade --id Microsoft.PowerShell"
+} elseif ((Get-Val $W 'pwsh_is_codex_bundled' $false) -eq $true) {
+    Add-Finding FAIL 'PF-02' "只找到 Codex 自带的 pwsh $pwshVer（$(Get-Val $W 'pwsh_path')）。计划任务里没有它，也不该依赖另一个程序的私有缓存。B 无人值守需要系统安装的 pwsh 7.4+：winget install --id Microsoft.PowerShell"
 } else {
-    Add-Finding PASS 'PF-02' "pwsh $pwshVer"
+    Add-Finding FAIL 'PF-02' '没有 pwsh 7.4+。B 拒绝运行（§9.11）；注意 Codex 那一层永远是 powershell.exe 5.1（§8.2.1）。winget install --id Microsoft.PowerShell'
 }
 
 $eff = Get-Val $EP 'effective' 'Unknown'
@@ -449,6 +512,17 @@ if (-not (Get-Val $DF 'mpcmdrun_path')) {
     Add-Finding WARN 'PF-09' 'MpCmdRun 需提权运行（官方）。当前不是管理员——B 的计划任务要 -RunLevel Highest（§8.8.10）'
 } else {
     Add-Finding PASS 'PF-09' 'MpCmdRun 可用且当前已提权'
+}
+
+# Defender 防病毒本身有没有在运行。**没在运行时 MpCmdRun 扫描必然失败** → 按 §6.9.4
+# 落 C 级 → 每一个游戏都停在 THREAT_SUSPECTED 等人（2026-09-29 Windows 实测命中这一条）。
+# 只在明确读到 false 时报；读不到（$null）不下结论。
+$dfStatus = Get-Val $DF 'status'
+if ((Get-Val $dfStatus 'antivirus_enabled' $null) -eq $false) {
+    $avNames = @(Get-Val $DF 'av_products' @() | ForEach-Object { "$(Get-Val $_ 'name')" }) -join '、'
+    if (-not $avNames) { $avNames = '（安全中心里没读到任何杀软）' }
+    Add-Finding FAIL 'PF-10' ("Defender 防病毒没有在运行（AntivirusEnabled=false，引擎 {0}，模式 {1}）。已登记的杀软：{2}。按 §6.9.4 每个游戏都会停在 THREAT_SUSPECTED 等你裁决——这条要先定处理方式" -f `
+        (Get-Val $dfStatus 'engine_version' '?'), (Get-Val $dfStatus 'running_mode' '?'), $avNames)
 }
 
 $E = Get-Val $IP 'worst_E'
@@ -512,7 +586,9 @@ function Show {
 Write-Host ''
 Write-Host '═══ GameFlow Preflight ═══════════════════════════════════════'
 Write-Host ("  机器      : {0}  ({1})" -f (Show (Get-Val $P 'machine')), (Show (Get-Val $P 'caption')))
-Write-Host ("  PowerShell: {0}    pwsh: {1}" -f (Show (Get-Val $W 'current_version')), (Show $pwshVer))
+$pwshShow = $null
+if ($sysVer) { $pwshShow = "$sysVer（系统安装）" } elseif ($pwshVer) { $pwshShow = "$pwshVer（仅 Codex 自带，计划任务里没有）" }
+Write-Host ("  PowerShell: {0}    pwsh: {1}" -f (Show (Get-Val $W 'current_version')), (Show $pwshShow))
 Write-Host ("  7-Zip     : {0}" -f (Show $szVer))
 Write-Host ("  枢纽根    : {0}  [{1}]  剩余 {2} GiB" -f $HubRoot, (Show (Get-Val $H 'filesystem')), (Show (Get-Val $H 'free_gib')))
 Write-Host ("  ACP       : {0}" -f (Show $acp))
