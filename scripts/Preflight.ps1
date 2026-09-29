@@ -16,7 +16,9 @@
 .PARAMETER SampleGameDirs
     已解压的真实游戏目录，用于测量「最长内部条目路径」（SPEC §11 #26）。
     这条直接决定 MAX_PATH 预算够不够、目录名降级会不会频繁触发。
-    例：-SampleGameDirs 'D:\Games\ABC','E:\old\XYZ'
+    多个目录用「|」隔开写在**一个**字符串里：-SampleGameDirs 'D:\Games\ABC|E:\old\XYZ'
+    （'A','B' 数组写法只在 PowerShell 提示符里直接调用时有效，经 powershell -File
+    传进来就坏了 —— 见 param 块后的注释。）
 
 .PARAMETER OutFile
     JSON 快照落盘位置。不给就只打印摘要，一个文件都不写。
@@ -26,12 +28,20 @@
 .EXAMPLE
     .\Preflight.ps1 -HubRoot D:\GameHub -SampleGameDirs 'D:\Games\某游戏' -OutFile .\docs\preflight.json
 #>
-[CmdletBinding()]
+[CmdletBinding(PositionalBinding = $false)]
 param(
     [string]   $HubRoot = 'D:\GameHub',
     [string[]] $SampleGameDirs = @(),
     [string]   $OutFile
 )
+
+# 多个目录用「|」隔开。经 powershell -File 调用时数组**不会**被展开（2026-09-29 实测）：
+#   外层是 pwsh → 'A','B' 连引号整串成为一个值，是个不存在的路径；
+#   外层把它拆成多个参数 → 第二个成了位置参数，悄悄绑到 -OutFile 上。
+# 所以关掉位置绑定（多出来的参数直接报错，而不是被悄悄绑走），并按「|」拆分
+# —— 它是 Windows 文件名的非法字符，拆分零歧义。在提示符里直接传数组仍然有效。
+$SampleGameDirs = @($SampleGameDirs | ForEach-Object { $_ -split '\|' } |
+                    ForEach-Object { $_.Trim() } | Where-Object { $_ })
 
 # 刻意不开 StrictMode：Preflight 的价值在于「即使几项探不到也要出一份快照」。
 # 开了 StrictMode，任何一个探测项返回 error 对象都会让后面的判定段整体崩掉。

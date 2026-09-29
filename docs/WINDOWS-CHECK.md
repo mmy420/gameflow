@@ -3,8 +3,13 @@
 > 本项目在 macOS 上开发。以下几类事实**在开发机上无法验证**，只能在目标机做。
 > 这份文档说清楚：**测什么、怎么测、每个结果意味着什么、哪些结果会改变设计。**
 >
-> 最后更新 2026-09-29：修正 #3 的测法（原测法已被证明无效，见「第三部分」），
-> 修正 W3 的竞态，新增 W9 与执行上下文记录，新增「交给 Codex 执行」的指令。
+> 最后更新 2026-09-29（第二版）：
+> - **多个游戏目录改用 `|` 隔开写在一个字符串里**。原来的 `'A','B'` 写法经 `powershell -File` 传进去会被拆坏（实测），现在会直接报错而不是带着错参数跑完
+> - 修掉一处 5.1 下会让整个检测**永远挂住**的 bug（W4），以及 W1/W7 在 5.1 下会静默作废的两处
+> - **每跑完一项就落一次盘**：被中断或超时杀掉，已跑完的项仍在
+> - 结果改由你发回 JSON 文件，Codex 只转述汇总（原因见下）
+>
+> 第一版（同日）：修正 #3 的测法（原测法已被证明无效，见「第三部分」），修正 W3 的竞态，新增 W9 与执行上下文记录。
 
 ---
 
@@ -24,43 +29,61 @@
 
 ## 第一部分 · 交给 Windows 上的 Codex 执行（推荐）
 
-### 你先做三件事（约 2 分钟）
+### 你先做四件事（约 3 分钟）
 
-**① 建一个空的枢纽目录**（后面反正要用；W9 需要它存在才能测写权限，不存在时 W9 只会跳过、不会替你建）：
+**① 拉代码**（在普通终端里）：
+
+```powershell
+git clone https://github.com/mmy420/gameflow.git D:\GameFlow
+```
+
+已经 clone 过的话改成 `cd D:\GameFlow; git pull`。**这一步你自己做、不交给 Codex**：联网会触发审批，混进下面要数的审批次数里；而且 Codex 要以这个目录为工作目录（见 ③）。
+
+**② 建一个空的枢纽目录**（后面反正要用；W9 需要它存在才能测写权限，不存在时 W9 只会跳过、不会替你建）：
 
 ```powershell
 mkdir D:\GameHub
 ```
 
-**② 给 Codex 配置可写目录**。编辑 `%USERPROFILE%\.codex\config.toml`，加：
+**③ 配置 Codex，并在 `D:\GameFlow` 里打开它**。编辑 `%USERPROFILE%\.codex\config.toml`，加：
 
 ```toml
 [sandbox_workspace_write]
 writable_roots = ["D:\\GameHub"]
 ```
 
-然后**重启 Codex**（配置在会话启动时读取）。这一步是在测「我们打算用的配置在 Windows 沙盒下到底生不生效」——W9 会给出答案。
+然后**重启 Codex，并把 `D:\GameFlow` 作为工作目录打开**（桌面版选这个文件夹；命令行版先 `cd D:\GameFlow` 再启动）。
+工作目录必须是它：检测结果要写进 `D:\GameFlow\docs\`，沙盒只放行工作目录与 `writable_roots`。
+`writable_roots` 这一行是在测「我们打算用的配置在 Windows 沙盒下到底生不生效」——W9 会给出答案。
 
-**③ 准备两三个已解压的真实游戏目录的路径**，填进下面指令里的 `-SampleGameDirs`。脚本对它们**只读**。这一项决定目录名降级会不会频繁触发，**尽量给**。
+**④ 挑两三个已解压的真实游戏目录**，填进下面指令里的 `-SampleGameDirs`。脚本对它们**只读**。这一项决定目录名降级会不会频繁触发，**尽量给**。
 
-### 然后把这段话原样发给 Codex
+### 然后把这段话发给 Codex
+
+发之前只改一处：把 `-SampleGameDirs` 后面**单引号里**的内容换成你的目录。
 
 ```
 请在这台 Windows 机器上执行 GameFlow 的环境检测。严格按下面做：只执行和汇报，
-不要修改仓库里的任何文件，不要尝试修复失败项，不要换别的命令重试。
+不要改动仓库里的任何文件（脚本自己会写 docs\windows-check.json，这是预期的），
+不要尝试修复失败项，不要换别的命令重试。
 
-1. 若 D:\GameFlow 不存在：git clone https://github.com/mmy420/gameflow.git D:\GameFlow
-   若已存在：在 D:\GameFlow 里执行 git pull
-2. 读一遍 D:\GameFlow\docs\WINDOWS-CHECK.md，了解每一项在测什么。
-3. 用 Windows PowerShell 5.1（powershell.exe，不要用 pwsh）执行下面这条命令，一字不改：
+1. 读一遍 D:\GameFlow\docs\WINDOWS-CHECK.md，了解每一项在测什么。
+2. 用 Windows PowerShell 5.1（powershell.exe，不要用 pwsh）执行下面这条命令，一字不改。
+   它通常要跑 2–5 分钟。执行时把这条命令的超时设为 900000 毫秒（15 分钟），不要用默认超时：
 
-   powershell -NoProfile -ExecutionPolicy Bypass -File D:\GameFlow\tests\windows\Invoke-WindowsCheck.ps1 -HubRoot D:\GameHub -ProbeHubWrite -SampleGameDirs '游戏目录1','游戏目录2'
+   powershell -NoProfile -ExecutionPolicy Bypass -File D:\GameFlow\tests\windows\Invoke-WindowsCheck.ps1 -HubRoot D:\GameHub -ProbeHubWrite -SampleGameDirs 'D:\Games\游戏A|E:\old\游戏B'
 
-4. 跑完后，把 D:\GameFlow\docs\windows-check.json 的完整内容原样输出，并附上脚本最后打印的汇总。
-5. 不要删除任何文件，不要安装任何软件。任何一项失败都如实汇报。
+3. 跑完后，把脚本最后打印的汇总原样贴出来：两条 ------ 横线之间的几行，加上 RESULT JSON 那一行。
+   不要转述或摘录 JSON 文件的内容，文件我自己发。
+4. 不要删除任何文件，不要安装任何软件。任何一项失败都如实汇报；命令若被超时或中断，也照实说。
 ```
 
+**`-SampleGameDirs` 的写法**：多个目录用 `|` 隔开，**整串放在一对单引号里**；路径末尾不要带 `\`；路径里本身有单引号（比如 `Maiden's Tale`）的话，把它写成两个单引号。一个也不想给，就把 `-SampleGameDirs` 连同后面的引号整段删掉。
+**不能写成 `'A','B'`**——经 `powershell -File` 传进去会被拆坏（实测），脚本现在遇到这种写法会立刻报错停下，不会带着错参数跑完。
+
 **「一字不改」和「不要修复」是故意的**：这次要测的正是 Codex 调 5.1 这条真实路径。Codex 若自作主张换成 `pwsh`、加参数、或改脚本重跑，测到的就是另一个程序。
+
+**为什么不让 Codex 直接把 JSON 贴出来**：结果文件有好几百行。Codex 交给模型的命令输出默认只有 1 万 token 的预算（codex-cli 0.150.1 实查：`max_output_tokens … Defaults to 10000 tokens`），超出部分会被截掉；让模型「原样输出」一份它只看到一部分的文件，缺的部分可能被它补写出来——这正是一份诊断结果最不能有的东西。汇总那几行是纯 ASCII、很短，经得起转述；完整数据走文件本身。
 
 ### 跑的过程中，你只需要观察一件事
 
@@ -68,14 +91,19 @@ writable_roots = ["D:\\GameHub"]
 
 这是第三部分那个问题的答案：检测脚本内部会起十几个子进程（`powershell.exe`、`pwsh.exe`、`7z.exe`）。
 
-- **只为顶层命令弹了一次** → 脚本内部起的子进程不会被逐个审批 → 将来「对 Codex 说一句话触发作业」最多点一次批准
+- **只为顶层命令弹了一次（或一次都没弹）** → 脚本内部起的子进程不会被逐个审批 → 将来「对 Codex 说一句话触发作业」最多点一次批准
 - **每个子进程都弹** → 那条路径不可用，作业只能走计划任务或你在终端里手动跑
 
-`git clone` 那一步需要联网，Codex 默认沙盒不联网，它大概率会请你批准联网——那一次不算。
+只数第 2 步那条命令引起的审批。
 
 ### 跑完把什么发回来
 
-`D:\GameFlow\docs\windows-check.json` 的完整内容 + 审批次数与命令原文。JSON 里**不含**密码、账号、文件内容；唯一可能带路径的是你给的 `-SampleGameDirs`。
+1. **结果文件**：`D:\GameFlow\docs\windows-check.json`，用记事本打开 → 全选 → 复制过来。
+   若 Codex 贴出的 `RESULT JSON` 那一行指向别处（仓库目录写不进去时，脚本会改写到临时目录的 `gameflow-windows-check.json`），就发那个文件。
+2. Codex 贴出的汇总几行。
+3. 审批次数与每次的命令原文。
+
+JSON 里**不含**密码、账号、文件内容；带路径的只有你给的 `-SampleGameDirs`，以及 `context` 里的用户名与机器名。
 
 ---
 
@@ -87,8 +115,10 @@ writable_roots = ["D:\\GameHub"]
 git clone https://github.com/mmy420/gameflow.git D:\GameFlow
 cd D:\GameFlow
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\windows\Invoke-WindowsCheck.ps1 `
-    -HubRoot D:\GameHub -SampleGameDirs '游戏目录1','游戏目录2'
+    -HubRoot D:\GameHub -SampleGameDirs 'D:\Games\游戏A|E:\old\游戏B'
 ```
+
+`-SampleGameDirs` 的写法同上：`|` 隔开，一对单引号。
 
 **两条路径各跑一次、对比结果，信息量最大**：终端那次给出这台机器的真实情况，Codex 那次给出沙盒会拦掉什么。
 
@@ -103,9 +133,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\windows\Invoke-Windo
 | 用 `tests\fixtures\` 里的小样本调 7-Zip | ❌ 装东西、联网 |
 | 起子进程持锁（测互斥） | ❌ 删除任何非本脚本创建的东西 |
 | **仅当给了 `-ProbeHubWrite`**：在 `D:\GameHub` 建一个 `_gameflow_probe_<随机>.tmp` 并立刻删掉 | ❌ 不给该开关时对 `D:\GameHub` 零写入 |
-| 写一份 `docs\windows-check.json` | |
+| 写一份 `docs\windows-check.json`（写不进去时改写到临时目录，最后一行会打印实际位置） | |
 
-耗时约 1–3 分钟，大头是 `-SampleGameDirs` 的递归扫描。
+耗时通常 2–5 分钟：单元测试要在 5.1 与 pwsh 下各跑一遍，`-SampleGameDirs` 要递归扫描，W4 若遇到 7-Zip 挂住会等满 15 秒。
 
 ---
 
@@ -121,6 +151,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\windows\Invoke-Windo
 | `codex_env` | 这些变量的**名字**；只有名字含 `SANDBOX` 的才记值（模式标志，非机密） |
 | `user` | Codex 的 elevated 沙盒会换成独立的本地用户，这一格能看出来 |
 | `temp_writable` | 临时目录能不能写。**`false` 时 W3/W5/W6/W7/W8 的失败全部不可信** |
+
+JSON 顶层还有三格，用来判断「这份结果本身靠不靠得住」：
+
+| 字段 | 意思 |
+|---|---|
+| `params` | 脚本**实际收到**的参数。`sample_game_dirs` 的个数和你给的对不上，说明参数在传递中被拆坏了 |
+| `completed` | 跑到最后才是 `true`。`false` = 中途被中断或被超时杀掉 |
+| `in_progress` | 被杀时正在跑的那一项——也就是卡住的那一项 |
 
 ---
 
@@ -153,6 +191,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\windows\Invoke-Windo
   .NET Framework 上不存在），这是契约 SZ-4 明文规定的，失败信息应当是那句明确的抛错。
 - `pwsh`：全部应当全绿。若没装 pwsh，这一格是 `present: false`，
   那么 **B 拒绝运行**（§9.11 规定不降级），需要装。
+
+每个宿主记三格：`exit_code`、`summary`（每个测试文件一行 `PASS n FAIL n`）、`details`（除通过行以外的全部输出：文件标题、失败明细、以及测试文件在 5.1 下根本加载不起来时的报错）。
 
 任何**其它**失败都是真问题，尤其注意：
 
@@ -292,4 +332,6 @@ SPEC §8.5.3 原本让你跑 `codex execpolicy check --rules … -- powershell.e
 
 脚本**从未在 Windows 上执行过**，首次跑大概率有一两处要修。任何报错直接贴回来，包括完整的错误信息与行号。不用自己 debug，也别让 Codex 去修——修过的脚本测出来的就不是原来那个了。
 
-某一项卡住超过 3 分钟，`Ctrl+C` 中断即可——每项都在独立的 `Probe` 块里，中断一项不影响别项，已跑完的部分仍会写进 JSON。
+某一项卡住超过 3 分钟（每项开始时会打印 `[W1]`…`[W9]`，看最后一行就知道是哪项），`Ctrl+C` 中断即可。
+注意 `Ctrl+C` 结束的是**整个脚本**，不是只跳过那一项；但脚本**每跑完一项就落一次盘**，已跑完的项都在 JSON 里，
+`completed` 是 `false`、`in_progress` 指出卡在哪一项。把这份不完整的 JSON 照样发回来，它本身就是答案的一部分。

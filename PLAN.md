@@ -45,7 +45,8 @@
 
 **完成判据**：
 
-- `windows-check.json` 里 W1 的 `archiver.sevenzip_path`、`hub.filesystem`、`codepage.acp`、`internal_paths.worst_E` 四个字段都有值
+- `windows-check.json` 的 `completed` 是 `true`（不是中途被杀的半份），`params.sample_game_dirs` 与你给的目录一一对应
+- W1 的 `archiver.sevenzip_path`、`hub.filesystem`、`codepage.acp`、`internal_paths.worst_E` 四个字段都有值
 - W2 在 5.1 下除 `SevenZip`（契约 SZ-4 规定它要 pwsh 7.4+）外全绿，在 pwsh 下全绿
 - W3 的 `verdict` 是 `PASS`（`INCONCLUSIVE` 要在普通终端重跑，`FAIL` 是阻塞性的）
 - 由 Codex 执行的那一次：记下了审批弹窗次数与弹窗里的命令原文（即原 #3 的答案）

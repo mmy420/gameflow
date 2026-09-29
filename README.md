@@ -5,7 +5,8 @@
 把「资源页 → 网盘转存 → 下载 → 解压 → 校验 → 删源包 → 投递到目标盘」这条重复的人工链条，
 拆成可重跑、可中断、每一步都有显式状态的作业。
 
-> **状态**：设计阶段。详尽设计规格见 [`SPEC.md`](SPEC.md)，**尚未落地**。
+> **状态**：阶段 0 —— 地基 lib 与 Windows 检测脚本已写完，**等 Windows 实测结果**；批次、解压、投递等业务流程**尚未落地**。
+> 详尽设计规格见 [`SPEC.md`](SPEC.md)。
 > **目标平台**：Windows（本仓库在 macOS 上撰写，只存文档与规则，不存游戏数据）。
 
 ---
@@ -81,10 +82,10 @@ E:\wen\games\hgames\202609\<游戏名>\    每批指定，可在任意盘，也�
 ```
 gameflow/
   README.md      ← 你在这里
-  SPEC.md        ← 详尽设计规格（§1–§12，42 条决策台账）
+  SPEC.md        ← 详尽设计规格（§1–§12，43 条决策台账）
   PLAN.md        ← 实施计划：先做什么、怎么算做完
   docs/
-    WINDOWS-CHECK.md   ← **在 Windows 上怎么测**：一条命令，八项检测
+    WINDOWS-CHECK.md   ← **在 Windows 上怎么测**：一条命令，九项检测（第九项可选）
   scripts/lib/   六个地基模块（104 条用例在 macOS + pwsh 7.6 上全绿；**Windows 上尚未验证**）
   tests/         零依赖测试 harness + lint + fixture
 ```
@@ -113,7 +114,7 @@ gameflow/
 
 **M0 = 在 Windows 上跑一次检测。** 完整说明见 [`docs/WINDOWS-CHECK.md`](docs/WINDOWS-CHECK.md)。
 
-推荐**交给 Windows 上的 Codex 执行**——文档第一部分有一段可以原样发给它的指令，外加三个 2 分钟的准备步骤。
+推荐**交给 Windows 上的 Codex 执行**——文档第一部分有一段可以直接发给它的指令，外加四个准备步骤（约 3 分钟）。
 那条路径本身就是这次要测的：Codex 调 Windows PowerShell 5.1。
 
 也可以自己在终端跑：
@@ -122,8 +123,10 @@ gameflow/
 git clone https://github.com/mmy420/gameflow.git D:\GameFlow
 cd D:\GameFlow
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\windows\Invoke-WindowsCheck.ps1 `
-    -HubRoot D:\GameHub -SampleGameDirs 'D:\你已解压的某个游戏'
+    -HubRoot D:\GameHub -SampleGameDirs 'D:\Games\游戏A|E:\old\游戏B'
 ```
+
+多个游戏目录用 `|` 隔开、整串一对单引号——**不能写成 `'A','B'`**，经 `-File` 传进去会被拆坏。
 
 这不是仪式感。本项目在 macOS 上开发，凡是 Windows 特有的行为都只能靠官方文档推断，
 标了 `【待测】` 的地方不实测就写不出正确的实现。检测要回答的问题按分量排：
