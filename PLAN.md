@@ -16,7 +16,7 @@
 ```
 
 **0 → 1 → 2 → 3 → 4 是硬顺序**，理由是破坏面单调递增：0 和 1 一个字节都不写用户数据，2 只写不删，3 才开始删（限枢纽内），4 才跨卷搬。
-**5 可以随时插入**——脚本能直接用命令行跑，skills 只是包一层触发。但其中 0.1 的 `prefix_rule` 实测要最早做（见下）。
+**5 可以随时插入**——脚本能直接用命令行跑，skills 只是包一层触发。它依赖 0.1 里「Codex 会不会对脚本内部子进程逐个审批」的实测，但**不阻塞 1–4**：无人值守路径走 Windows 任务计划，不经过 Codex（D-10、D-38）。
 
 ---
 
@@ -32,33 +32,23 @@
 |---|---|---|
 | 1 | 环境快照：`7z.exe` 在不在 PATH、版本、是否只有 WinRAR/Bandizip GUI；`$PSVersionTable`；枢纽卷文件系统；系统 ACP；`LongPathsEnabled`；`Get-ExecutionPolicy -List` | SPEC 每一节都建在沙上 |
 | 2 | Codex 沙盒能否写 `D:\GameHub`（project 开在 `D:\GameFlow`，配 `sandbox_workspace_write.writable_roots`） | 执行体 A 第一步写文件就失败，或被迫开 full access（不可接受） |
-| 3 | `prefix_rule` 对 `powershell.exe -NoProfile -Command "…"` 的拆分语义（`codex execpolicy check`） | 7z 免审批写不出来 → 每次解压都要人点一次 → A 失去无人值守的意义。**这条决定阶段 5 的形态，所以要最早测** |
+| 3 | Codex 会不会对脚本内部起的子进程逐个审批（原题「`prefix_rule` 拆分语义」，原测法 `execpolicy check` 已被证明无效，见 SPEC §8.5.3） | 只影响「对 Codex 说一句话手动触发」这条路径：不会逐个审批 → 每次触发最多点一次；会 → 该路径降级为「让 Codex 去触发计划任务」。**不影响无人值守** |
 | 26 | 真实游戏包的最长内部条目路径（拿现有 3–5 个已解压目录跑 `7z l -slt` 求 `Path` 最大长度与中位数） | 不知道 MAX_PATH 预算够不够 → 不知道目录名降级会不会频繁触发 → 可能要重选枢纽根名字 |
 
 **产出**：一份 `docs/preflight-findings.md`，把四条的实测结果与结论写下来。后续任何与之矛盾的 SPEC 断言，以这份为准。
 
-### 0.2 `Preflight.ps1` — **已写好，等你在 Windows 上跑**
+### 0.2 检测脚本 — **已写好，等你在 Windows 上跑**
 
-`scripts\Preflight.ps1`。**只读**，不写任何文件（除非你给 `-OutFile`）。它把 0.1 里除 #2/#3 之外的全部探测都固化了，包括 #26 的最长内部路径测量。
+入口是 `tests\windows\Invoke-WindowsCheck.ps1`，它把 `scripts\Preflight.ps1` 包成九项检测里的 W1，并补上只能在 Windows 上验的几项（5.1 下的单元测试、跨进程互斥、Shift-JIS 落地形态、路径穿越、MOTW、枢纽写权限）。**只读 + 临时目录**；唯一的例外 W9 必须显式开启。
 
-```powershell
-cd D:\GameFlow
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Preflight.ps1 `
-    -HubRoot D:\GameHub `
-    -SampleGameDirs 'D:\你已解压的某个游戏','E:\另一个' `
-    -OutFile .\docs\preflight.json
-```
+**怎么跑、交给 Codex 时发什么指令、跑的过程中观察什么，全部见 [`docs/WINDOWS-CHECK.md`](docs/WINDOWS-CHECK.md)。** 这里只记完成判据：
 
-- 用 `powershell.exe`（5.1）跑，不要用 `pwsh` —— **Codex 那一层就是 5.1**，这个脚本要先证明自己在 5.1 上能跑。
-- `-SampleGameDirs` 给不给都能跑，但**不给就测不到 §11 #26**，那条决定目录名降级会不会频繁触发。
-- 退出码：`0` = 无 FAIL，`3` = 有 FAIL（前置条件不满足）。
+**完成判据**：
 
-**完成判据**：跑出来没有 FAIL；`preflight.json` 里 `archiver.sevenzip_path`、`hub.filesystem`、`codepage.acp`、`internal_paths.worst_E` 四个字段都有值。
-
-**#2 与 #3 这个脚本测不到**，必须在 Codex 会话里做（脚本末尾会把这两条打出来提醒）：
-
-- **#2**：Codex 里开 project = `D:\GameFlow`，配 `sandbox_workspace_write.writable_roots = ["D:\\GameHub"]`，让 agent 实际写一个文件
-- **#3**：`codex execpolicy check --rules <rules> -- powershell.exe -NoProfile -Command "& '7z.exe' t x.7z"`，看 `prefix_rule` 是整条匹配还是按子命令拆分
+- `windows-check.json` 里 W1 的 `archiver.sevenzip_path`、`hub.filesystem`、`codepage.acp`、`internal_paths.worst_E` 四个字段都有值
+- W2 在 5.1 下除 `SevenZip`（契约 SZ-4 规定它要 pwsh 7.4+）外全绿，在 pwsh 下全绿
+- W3 的 `verdict` 是 `PASS`（`INCONCLUSIVE` 要在普通终端重跑，`FAIL` 是阻塞性的）
+- 由 Codex 执行的那一次：记下了审批弹窗次数与弹窗里的命令原文（即原 #3 的答案）
 
 ### 0.3 `scripts\lib\` 六个模块
 

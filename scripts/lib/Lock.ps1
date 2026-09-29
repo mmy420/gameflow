@@ -12,10 +12,11 @@
     的确定性偏好直接冲突。锁文件里写 {run_id, host, started_at} 只供人排查，
     **绝不用它判存活**。
 
-    ⚠️ 本模块是全项目**最不可能在 macOS 上验证**的一块：Unix 上 .NET 的 FileShare
-    是进程内咨询语义，跨进程互斥与 Windows 的强制锁不同。这里的测试只覆盖
-    「同进程内重复抢锁失败」与「释放后可再抢」，**真正的跨进程互斥必须在
-    Windows 上验**（见 §11）。
+    平台边界（2026-09-29 实测修正，此前的说法过头了）：.NET 在 Unix 上用 flock
+    实现 FileShare.None，**彼此都是 .NET 进程时跨进程互斥同样生效**，
+    tests\Lock.Tests.ps1 的跨进程用例在 macOS 上真跑通过。
+    只能在 Windows 上验的是：强制锁（非 .NET 进程也被挡）与跨会话（计划任务
+    会话 vs 交互会话）—— 见 §11 与 docs\WINDOWS-CHECK.md 的 W3。
 #>
 
 if (-not $script:GfJsonLoaded2) { . "$PSScriptRoot\Json.ps1"; $script:GfJsonLoaded2 = $true }

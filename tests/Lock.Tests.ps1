@@ -1,10 +1,11 @@
 ﻿<#
     scripts\lib\Lock.ps1 的测试（SPEC §8.8.6）
 
-    ⚠️ **这是全项目最不可能在 macOS 上验证的一块。**
-    Unix 上 .NET 的 FileShare 与 Windows 的强制锁语义不同。这里只覆盖
-    「拿到/没拿到」的 API 契约与释放语义；**真正的跨进程互斥必须在 Windows 上验**
-    （§11：计划任务会话 vs Codex 交互会话）。
+    平台边界（2026-09-29 实测修正）：.NET 在 Unix 上用 flock 实现 FileShare.None，
+    **彼此都是 .NET 进程时跨进程互斥是生效的**，所以下面的跨进程用例在 macOS 上
+    也能真跑。只能在 Windows 上验的是另两件事：
+      · **强制锁**：Windows 连非 .NET 进程也会被挡，Unix 的 flock 是咨询性的
+      · **跨会话**：计划任务会话 vs Codex / 人的交互会话（§11）
 #>
 . "$PSScriptRoot\lib\GfTest.ps1"
 . "$PSScriptRoot\..\scripts\lib\Lock.ps1"
@@ -69,6 +70,48 @@ Test-Case 'Open-GfLock 对不可创建的路径返回 $null 而不抛' {
     $bad = [System.IO.Path]::Combine($script:Root, 'no-such-file.txt', 'nested', 'x.lock')
     [System.IO.File]::WriteAllText([System.IO.Path]::Combine($script:Root, 'no-such-file.txt'), 'x')
     Assert-Equal $null (Open-GfLock -LiteralPath $bad)
+}
+
+Test-Case '跨进程：另一个进程持锁时抢不到，放锁后立即可抢（§8.8.6 的核心）' {
+    # 用当前宿主自己的可执行文件起子进程：Windows 上是 powershell.exe / pwsh.exe，
+    # macOS 上是 pwsh。握手协议而不是「睡几秒赌它已拿到锁」—— 5.1 冷启动常超过 2 秒，
+    # 赌输了会报出假 FAIL。
+    $lp      = LockPath
+    $flag    = "$lp.acquired"
+    $release = "$lp.release"
+    $lib     = (Resolve-Path "$PSScriptRoot\..\scripts\lib\Lock.ps1").Path
+    $child   = [System.IO.Path]::Combine($script:Root, 'holder-' + [Guid]::NewGuid().ToString('N').Substring(0,6) + '.ps1')
+    $src = @"
+. '$lib'
+`$l = Open-GfLock -LiteralPath '$lp' -RunId 'holder'
+if (`$null -eq `$l) { exit 9 }
+[System.IO.File]::WriteAllText('$flag', 'ok')
+`$d = (Get-Date).AddSeconds(60)
+while (-not (Test-Path -LiteralPath '$release') -and (Get-Date) -lt `$d) { Start-Sleep -Milliseconds 100 }
+Close-GfLock -Lock `$l
+exit 0
+"@
+    [System.IO.File]::WriteAllText($child, $src, (New-Object System.Text.UTF8Encoding($true)))
+    $exe = (Get-Process -Id $PID).Path
+    $sp  = @{ FilePath = $exe; ArgumentList = @('-NoProfile','-ExecutionPolicy','Bypass','-File',$child); PassThru = $true }
+    if ($IsWindows -or $env:OS -eq 'Windows_NT') { $sp.WindowStyle = 'Hidden' }
+    $proc = Start-Process @sp
+
+    $sw = [System.Diagnostics.Stopwatch]::StartNew()
+    while (-not (Test-Path -LiteralPath $flag) -and $sw.Elapsed.TotalSeconds -lt 45 -and -not $proc.HasExited) {
+        Start-Sleep -Milliseconds 100
+    }
+    Assert-True (Test-Path -LiteralPath $flag) '持锁子进程必须先确认拿到锁，否则本用例什么也没测到'
+
+    $mine = Open-GfLock -LiteralPath $lp -RunId 'contender'
+    Assert-Equal $null $mine '另一个进程持锁时必须抢不到 —— 否则 A 与 B 会同时动同一个条目'
+    Close-GfLock -Lock $mine
+
+    [System.IO.File]::WriteAllText($release, 'go')
+    [void]$proc.WaitForExit(20000)
+    $after = Open-GfLock -LiteralPath $lp -RunId 'after'
+    try { Assert-True ($null -ne $after) '持锁进程退出后锁必须立即可用 —— 没有陈旧锁' }
+    finally { Close-GfLock -Lock $after }
 }
 
 if ([System.IO.Directory]::Exists($script:Root)) { [System.IO.Directory]::Delete($script:Root, $true) }

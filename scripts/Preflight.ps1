@@ -294,7 +294,7 @@ $R.codex = Probe 'codex' {
         cli_path       = Get-CmdPath 'codex.exe'
         codex_home     = $codexHome
         config_exists  = Test-Path -LiteralPath (Join-Path $codexHome 'config.toml')
-        # §11 #3：prefix_rule 对 PowerShell 的拆分语义 —— 只能用 execpolicy check 实测
+        # §11 #2/#3 问的是 Codex 自己的行为，本脚本测不到；由检测脚本的 W9 与「数审批次数」回答
         note = '§11 #2/#3 必须在 Codex 会话内实测，本脚本测不到（见输出末尾的待办）'
     }
 }
@@ -470,9 +470,13 @@ $R.summary  = [ordered]@{
     fail = @($findings | Where-Object { $_.level -eq 'FAIL' }).Count
 }
 # 本脚本测不到、必须在 Codex 会话里做的两条（§11 #2/#3）
+# 这两条问的是 Codex 自己的行为，本脚本测不到。
+# **不要在这里给出 `codex execpolicy check` 那条命令**：2026-09-29 实测它连官方说会拆的
+# bash -lc 都不拆，其「未命中」不构成证据（SPEC §8.5.3）。在 Codex 里跑时，它读到这段
+# 输出很可能会「顺手」去执行那条无效命令，所以只指向文档。
 $R.manual_todo = @(
-    '§11 #2  在 Codex 里开 project=D:\GameFlow，配 sandbox_workspace_write.writable_roots=["D:\\GameHub"]，让 agent 实际写一个文件，确认能写',
-    '§11 #3  codex execpolicy check --rules <rules> -- powershell.exe -NoProfile -Command "& ''7z.exe'' t x.7z"  —— 看 prefix_rule 是整条匹配还是按子命令拆分'
+    '§11 #2  Codex 沙盒能否写 D:\GameHub —— 由 tests\windows\Invoke-WindowsCheck.ps1 -ProbeHubWrite 的 W9 回答',
+    '§11 #3  Codex 会不会对脚本内部子进程逐个审批 —— 在 Codex 里跑检测时数审批次数，见 docs\WINDOWS-CHECK.md 第三部分'
 )
 
 # ── 输出 ─────────────────────────────────────────────────────────────────────

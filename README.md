@@ -85,7 +85,7 @@ gameflow/
   PLAN.md        ← 实施计划：先做什么、怎么算做完
   docs/
     WINDOWS-CHECK.md   ← **在 Windows 上怎么测**：一条命令，八项检测
-  scripts/lib/   六个地基模块（103 条用例全绿）
+  scripts/lib/   六个地基模块（104 条用例在 macOS + pwsh 7.6 上全绿；**Windows 上尚未验证**）
   tests/         零依赖测试 harness + lint + fixture
 ```
 
@@ -111,22 +111,29 @@ gameflow/
 
 ## 从哪开始
 
-**M0 = 在 Windows 上跑一次检测。** 一条命令，详见 [`docs/WINDOWS-CHECK.md`](docs/WINDOWS-CHECK.md)：
+**M0 = 在 Windows 上跑一次检测。** 完整说明见 [`docs/WINDOWS-CHECK.md`](docs/WINDOWS-CHECK.md)。
+
+推荐**交给 Windows 上的 Codex 执行**——文档第一部分有一段可以原样发给它的指令，外加三个 2 分钟的准备步骤。
+那条路径本身就是这次要测的：Codex 调 Windows PowerShell 5.1。
+
+也可以自己在终端跑：
 
 ```powershell
 git clone https://github.com/mmy420/gameflow.git D:\GameFlow
 cd D:\GameFlow
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\windows\Invoke-WindowsCheck.ps1 `
-    -SampleGameDirs 'D:\你已解压的某个游戏'
+    -HubRoot D:\GameHub -SampleGameDirs 'D:\你已解压的某个游戏'
 ```
 
-这不是仪式感。本 SPEC 在 macOS 上撰写，凡是 Windows 特有的行为都只能靠官方文档推断，
-标了 `【待测】` 的地方不实测就写不出正确的实现。其中几条会实质改变设计：
+这不是仪式感。本项目在 macOS 上开发，凡是 Windows 特有的行为都只能靠官方文档推断，
+标了 `【待测】` 的地方不实测就写不出正确的实现。检测要回答的问题按分量排：
 
-1. **环境快照** —— 装的是 7-Zip CLI 还是只有 WinRAR/Bandizip GUI、系统 ANSI 代码页、文件系统类型
-2. **Codex 沙盒能否写到 `D:\GameHub`** —— 不能的话执行体 A 根本跑不起来
-3. **`prefix_rule` 对 PowerShell 的拆分语义** —— 不通过的话每次解压都要人点一次，A 就失去无人值守的意义
-4. **真实游戏包的最长内部条目路径** —— 直接决定目录名降级会不会频繁触发
+1. **环境快照** —— 装的是 7-Zip CLI 还是只有 WinRAR/Bandizip GUI、系统 ANSI 代码页、文件系统类型。**阶段 1 直接等它**
+2. **lib 在 5.1 下的真实行为** —— 104 条用例只在 macOS + pwsh 7.6 上绿过
+3. **跨进程互斥** —— 不成立的话 A 与 B 会同时动同一个游戏，**阻塞性**
+4. **真实游戏包的最长内部条目路径** —— 决定目录名降级会不会频繁触发
+5. **Codex 沙盒能否写 `D:\GameHub`、会不会对脚本内部的子进程逐个审批** —— 只影响「对 Codex 说一句话手动触发」这条路径。
+   **无人值守路径走 Windows 任务计划，不经过 Codex，不受影响**（D-10、D-38）
 
 之后按 A（只读）→ B（先关掉删除）→ B（打开删除）→ 投递 → C 的顺序推进，逐阶段任务与完成判据见 [`PLAN.md`](PLAN.md)。
 

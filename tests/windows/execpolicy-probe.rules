@@ -1,0 +1,21 @@
+# GameFlow · §11 #3 探测用规则文件（SPEC §8.5.3）
+#
+# 用途：回答「Codex 的 prefix_rule 会不会拆开 PowerShell 调用」。
+# 这是一份**探测专用**的规则，不是生产规则 —— 不要拷进 ~/.codex/rules/。
+# 用 --rules 显式指向它，不碰你自己的 default.rules。
+#
+# 两条规则，对应三级测试里要匹配的两种形状：
+#   ["7z","t"]                         —— 若 PowerShell 调用能被拆开，② 应命中这条
+#   ["pwsh.exe","-NoProfile","-File",<入口脚本>] —— 若整条调用不拆，③ 应命中这条
+
+prefix_rule(
+    pattern = ["7z", "t"],
+    decision = "allow",
+    justification = "probe: 7z test subcommand",
+)
+
+prefix_rule(
+    pattern = ["pwsh.exe", "-NoProfile", "-File", "D:\\GameFlow\\scripts\\Invoke-Work.ps1"],
+    decision = "allow",
+    justification = "probe: fixed-shape entry script",
+)

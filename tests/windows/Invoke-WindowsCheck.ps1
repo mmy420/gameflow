@@ -29,6 +29,10 @@
 .PARAMETER OutFile
     结果 JSON。默认 .\docs\windows-check.json
 
+.PARAMETER ProbeHubWrite
+    在 HubRoot 里建一个唯一命名的探测文件并立即删掉（W9，§11 #2）。默认关。
+    HubRoot 不存在时什么也不做 —— 不会顺手把枢纽建出来。
+
 .EXAMPLE
     powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\windows\Invoke-WindowsCheck.ps1 `
         -SampleGameDirs 'D:\Games\某个已解压的游戏'
@@ -37,7 +41,11 @@
 param(
     [string]   $HubRoot = 'D:\GameHub',
     [string[]] $SampleGameDirs = @(),
-    [string]   $OutFile
+    [string]   $OutFile,
+    # 默认关。开启后在 HubRoot 里建一个唯一命名的探测文件并立即删掉，用来回答
+    # 「当前进程（尤其是 Codex 沙盒里的进程）能不能写枢纽」—— §11 #2。
+    # 这是本脚本**唯一**会写到临时目录以外的动作，所以必须显式开启。
+    [switch]   $ProbeHubWrite
 )
 
 $ErrorActionPreference = 'Continue'
@@ -55,6 +63,28 @@ $R = [ordered]@{
     }
     checks = [ordered]@{}
 }
+
+# ── 执行上下文 ──────────────────────────────────────────────────────────────
+# 由 Codex 执行时，沙盒可能拦截写临时目录、起子进程等动作。那些失败是**沙盒
+# 造成的**，不是这台机器的事实。不记录上下文，就会把沙盒拦截误读成系统结论。
+$ctx = [ordered]@{
+    user          = [Environment]::UserName          # Codex 的 elevated 沙盒会换成独立的本地用户
+    machine       = $env:COMPUTERNAME
+    codex_env     = @()                                # 只记变量**名**；只有 *SANDBOX* 类才记值
+    temp_writable = $false
+}
+foreach ($v in (Get-ChildItem Env: | Where-Object { $_.Name -like 'CODEX*' })) {
+    $entry = [ordered]@{ name = $v.Name }
+    if ($v.Name -match 'SANDBOX') { $entry.value = $v.Value }   # 模式标志，非机密
+    $ctx.codex_env += $entry
+}
+try {
+    $tp = Join-Path ([System.IO.Path]::GetTempPath()) ('gfctx-' + [Guid]::NewGuid().ToString('N'))
+    [System.IO.File]::WriteAllText($tp, 'x'); Remove-Item -LiteralPath $tp -Force
+    $ctx.temp_writable = $true
+} catch { $ctx.temp_error = $_.Exception.Message }
+$ctx.likely_under_codex = ($ctx.codex_env.Count -gt 0)
+$R.context = $ctx
 function Probe { param([string]$N, [scriptblock]$B)
     try { & $B } catch { return [ordered]@{ probe_failed = $true; error = $_.Exception.Message } } }
 function Say { param([string]$T, [string]$C = 'Gray') Write-Host $T -ForegroundColor $C }
@@ -111,42 +141,69 @@ $R.checks.W2_unit_tests = Probe 'W2' {
     $res
 }
 
-# ── W3 跨进程互斥（§8.8.6）——— macOS 上原理上测不了 ────────────────────────
+# ── W3 跨进程互斥（§8.8.6）—— 只能在 Windows 验的是强制锁与跨会话 ───────────
 Say '[W3] 跨进程互斥（FileShare.None）...'
 $R.checks.W3_cross_process_lock = Probe 'W3' {
     $lockFile = Join-Path $work 'x.lock'
+    $flag     = Join-Path $work 'holder.acquired'     # 持锁方拿到锁后才写它
+    $release  = Join-Path $work 'holder.release'      # 主进程写它 = 通知持锁方放锁
     $libLock  = Join-Path $repo 'scripts\lib\Lock.ps1'
-    # 子进程持锁 8 秒
+    # 握手协议，取代「睡 2 秒赌它已经拿到锁」：
+    #   5.1 冷启动（加上 Defender 首次扫描新脚本）经常超过 2 秒。持锁方还没拿到锁，
+    #   主进程就先抢到了 → blocked_while_held=false → 报出**假的 FAIL**。
+    #   而 W3 恰恰是唯一一项「FAIL 即阻塞」的检测，假 FAIL 代价最高。
     $holder = @"
 . '$libLock'
 `$l = Open-GfLock -LiteralPath '$lockFile' -RunId 'holder'
 if (`$null -eq `$l) { exit 9 }
-Start-Sleep -Seconds 8
+[System.IO.File]::WriteAllText('$flag', 'ok')
+`$deadline = (Get-Date).AddSeconds(60)
+while (-not (Test-Path -LiteralPath '$release') -and (Get-Date) -lt `$deadline) { Start-Sleep -Milliseconds 200 }
 Close-GfLock -Lock `$l
+exit 0
 "@
     $hp = Join-Path $work 'holder.ps1'
     [System.IO.File]::WriteAllText($hp, $holder, (New-Object System.Text.UTF8Encoding($true)))
     $p = Start-Process -FilePath 'powershell.exe' `
             -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',$hp) `
             -PassThru -WindowStyle Hidden
-    Start-Sleep -Seconds 2                      # 让它先拿到锁
+
+    # 等持锁方**确认拿到锁**，最多 45 秒
+    $sw = [System.Diagnostics.Stopwatch]::StartNew()
+    while (-not (Test-Path -LiteralPath $flag) -and $sw.Elapsed.TotalSeconds -lt 45 -and -not $p.HasExited) {
+        Start-Sleep -Milliseconds 200
+    }
+    $holderAcquired = Test-Path -LiteralPath $flag
+    $waitedSec = [Math]::Round($sw.Elapsed.TotalSeconds, 1)
 
     . $libLock
-    $mine = Open-GfLock -LiteralPath $lockFile -RunId 'contender'
-    $blockedWhileHeld = ($null -eq $mine)
-    if ($mine) { Close-GfLock -Lock $mine }
+    $blockedWhileHeld = $null
+    if ($holderAcquired) {
+        $mine = Open-GfLock -LiteralPath $lockFile -RunId 'contender'
+        $blockedWhileHeld = ($null -eq $mine)
+        if ($mine) { Close-GfLock -Lock $mine }
+    }
 
-    $p.WaitForExit(20000) | Out-Null
-    Start-Sleep -Milliseconds 500
+    [System.IO.File]::WriteAllText($release, 'go')
+    [void]$p.WaitForExit(20000)
+    Start-Sleep -Milliseconds 300
     $after = Open-GfLock -LiteralPath $lockFile -RunId 'after'
     $freeAfterRelease = ($null -ne $after)
     if ($after) { Close-GfLock -Lock $after }
 
+    # 持锁方根本没拿到锁 → 这一轮**什么也没测到**，不能判 FAIL
+    $verdict = 'INCONCLUSIVE'
+    if ($holderAcquired) {
+        $verdict = $(if ($blockedWhileHeld -and $freeAfterRelease) { 'PASS' } else { 'FAIL' })
+    }
     [ordered]@{
+        holder_acquired     = $holderAcquired       # false ⇒ 子进程没起来或被拦（Codex 沙盒？）
+        holder_wait_seconds = $waitedSec            # 5.1 冷启动实际耗时，顺带量一下
         blocked_while_held  = $blockedWhileHeld     # 必须 true —— 否则互斥根本不成立
         free_after_release  = $freeAfterRelease     # 必须 true —— 否则有陈旧锁问题
-        holder_exit         = $p.ExitCode
-        verdict             = $(if ($blockedWhileHeld -and $freeAfterRelease) { 'PASS' } else { 'FAIL' })
+        holder_exit         = $(if ($p.HasExited) { $p.ExitCode } else { $null })
+        verdict             = $verdict
+        note                = 'INCONCLUSIVE ≠ FAIL：持锁方没拿到锁，本轮没测到互斥。在普通终端重跑'
     }
 }
 
@@ -268,6 +325,31 @@ $R.checks.W8_long_path = Probe 'W8' {
     }
 }
 
+# ── W9 能不能写枢纽（§11 #2，opt-in）────────────────────────────────────────
+if ($ProbeHubWrite) {
+    Say '[W9] 枢纽写入探测...'
+    $R.checks.W9_hub_write = Probe 'W9' {
+        if (-not (Test-Path -LiteralPath $HubRoot)) {
+            return [ordered]@{ skipped = "HubRoot 不存在：$HubRoot（不会替你建）" }
+        }
+        $probe = Join-Path $HubRoot ('_gameflow_probe_' + [Guid]::NewGuid().ToString('N').Substring(0,8) + '.tmp')
+        $wrote = $false; $removed = $false; $err = $null
+        try {
+            [System.IO.File]::WriteAllText($probe, 'gameflow write probe')
+            $wrote = $true
+            Remove-Item -LiteralPath $probe -Force
+            $removed = -not (Test-Path -LiteralPath $probe)
+        } catch { $err = $_.Exception.Message }
+        [ordered]@{
+            hub_root = $HubRoot
+            wrote    = $wrote      # Codex 下为 false ⇒ writable_roots 没生效或沙盒不允许
+            removed  = $removed    # 我们自己的探测文件必须能删掉
+            error    = $err
+            note     = '在 Codex 里跑时，这一格就是 §11 #2 的答案'
+        }
+    }
+}
+
 # ── 汇总 ────────────────────────────────────────────────────────────────────
 if (Test-Path -LiteralPath $work) { Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue }
 
@@ -284,7 +366,9 @@ foreach ($k in $R.checks.Keys) {
     if ($v -is [System.Collections.IDictionary]) {
         if ($v.Contains('probe_failed')) { $mark = '❌' }
         elseif ($v.Contains('skipped'))  { $mark = '⏭' }
-        elseif ($v.Contains('verdict'))  { $mark = $(if ($v['verdict'] -eq 'PASS') { '✅' } else { '❌' }) }
+        elseif ($v.Contains('verdict'))  {
+            $mark = switch ($v['verdict']) { 'PASS' { '✅' } 'INCONCLUSIVE' { '❔' } default { '❌' } }
+        }
         else { $mark = '✅' }
     }
     Say ("  {0} {1}" -f $mark, $k)
@@ -292,4 +376,8 @@ foreach ($k in $R.checks.Keys) {
 Say '─────────────────────────────────────────────────────────────'
 Say ("  结果 JSON → {0}" -f $OutFile) Cyan
 Say '  把这个文件（或下面的摘要）整份贴回对话即可。' Cyan
+if ($ctx.likely_under_codex) {
+    Say '  检测到在 Codex 里运行：若有 ❌/❔ 且错误像是「拒绝访问」，可能是沙盒拦截而非系统事实，' Yellow
+    Say '  那几项请在普通终端里再跑一次对照。' Yellow
+}
 Say '═════════════════════════════════════════════════════════════' Cyan

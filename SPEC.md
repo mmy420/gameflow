@@ -6616,9 +6616,33 @@ TOML 里的表写法是上述 key path 的机械展开；**在目标机上应以
 
 Windows 上 agent 跑的是 `powershell.exe -NoProfile …`（§8.2.1），而拆分逻辑只覆盖 bash 系 ⇒ **极可能整条 PowerShell 调用被当成单一 invocation 来匹配 `prefix_rule`**，于是 `pattern = ["7z", "t"]` 这类写法**永远匹配不上**。【待测】
 
-**不验证的后果**（这是本节最贵的一条）：一个批次十几个包，每个包 `l` / `t` / `x` 至少三次调用，几十次审批弹窗。执行体 A 的无人值守属性直接归零，执行体 B 从"人确认一次"退化成"人点几十次"——**A 存在的意义就没了**。
+**不验证的后果**：~~一个批次十几个包，每个包 `l` / `t` / `x` 至少三次调用，几十次审批弹窗。执行体 A 的无人值守属性直接归零~~——**这句说重了，2026-09-29 更正**：
+
+- **无人值守路径根本不经过 Codex 的审批系统。** 按 D-10 与 D-38，A 与 B 都挂 Windows 任务计划运行，审批面不在这条链上。§11 #3 原本就写对了（「这不阻塞 A」），是本段与它自相矛盾。
+- 本节的问题**只影响「人对 Codex 说一句话、让它手动触发一次」这条路径**。
+- 而那条路径上的 7z 调用全在入口脚本自己起的子进程里（§8.5.4），所以真正要验的是「**Codex 会不会对脚本内部的子进程逐个审批**」。不会 → 最坏每次手动触发点一次批准；会 → 手动触发这条路径降级为「只让 Codex 去触发计划任务」。两种结局都**不影响无人值守**。
 
 #### 8.5.3 验证方法（在 Windows 机器上做，写脚本之前做）
+
+> **⚠️ 本小节原给的 `execpolicy check` 三级测法无法回答「会不会拆」，2026-09-29 实测作废。**
+>
+> 在 macOS 的 codex-cli 0.150.1 上用探测规则（`tests\windows\execpolicy-probe.rules`）实测，并加了**对照组**：
+>
+> | 输入 | 结果 |
+> |---|---|
+> | `7z t a.7z`（裸命令） | ✅ 命中 `["7z","t"]` —— 规则语法对 |
+> | `bash -lc "7z t a.7z"`（**官方文档明说会拆**） | ❌ **不命中** |
+> | `bash -c` / `sh -c` / `zsh -lc` / `/bin/bash -lc` | ❌ 一律不命中 |
+> | `powershell.exe -NoProfile -Command "7z t a.7z"` | ❌ 不命中 |
+> | `pwsh.exe -NoProfile -File D:\GameFlow\scripts\Invoke-Work.ps1 -BatchId demo` | ✅ 命中入口脚本规则 |
+>
+> 对照组不命中说明：**`execpolicy check` 是裸 argv 前缀匹配器，不做文档所说的 tree-sitter 拆分**——拆分发生在 agent 的审批路径里，不在这个独立检查器里。所以下表 ② 那一行在这个工具上**必然**「匹配不上」，而那什么也证明不了。【实测·macOS；检查器是平台无关的静态匹配，结论可外推，但 agent 审批路径的行为仍须在 Windows 上观察】
+>
+> **替代测法**：在 Windows 上让 Codex 执行 `tests\windows\Invoke-WindowsCheck.ps1`（它内部会起十几个子进程），**数审批弹窗次数并记下弹窗里的命令原文**——这直接回答 §8.5.4 的真正问题。见 `docs\WINDOWS-CHECK.md` 第一、三部分。
+>
+> 表中第三行（**入口脚本能按原样前缀命中**）不依赖任何拆分，实测成立，下面「规则给入口脚本写而不是给 7z 写」的推荐因此保留。
+
+**〔以下为原测法，已作废，仅留作记录——不要照做，理由见本小节开头〕**
 
 官方提供了本地验证工具（`codex execpolicy check`）【实测：本机 `codex execpolicy --help` 确有 `check  Check execpolicy files against a command` 子命令】。**按下面三条逐级收窄地跑**：
 
@@ -7008,9 +7032,8 @@ $set = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew `
 
 | 待测 | 出处 | 不验证的后果 |
 |---|---|---|
-| Windows 原生沙盒下 `sandbox_workspace_write.writable_roots` 是否生效 | §8.3.2 | Codex 会话里 A/B 一步都跑不动，且失败长得像脚本 bug |
-| `codex execpolicy check` 对 `powershell.exe -NoProfile -Command …` 的拆分语义 | §8.5.3 | 每次 7z 调用要人点一次，A 的无人值守属性归零 |
-| Codex 是否对脚本内部起的**子进程**重新审批 | §8.5.4 | B 从"确认一次"退化成"点几十次" |
+| Windows 原生沙盒下 `sandbox_workspace_write.writable_roots` 是否生效 | §8.3.2 | **由 Codex 触发时** A/B 一步都跑不动，且失败长得像脚本 bug。计划任务路径不受影响（D-10、D-38）。检测脚本 W9 回答 |
+| Codex 是否对脚本内部起的**子进程**重新审批（原「`execpolicy check` 拆分语义」一条已并入：原测法作废，见 §8.5.3） | §8.5.4 | **仅影响由 Codex 手动触发的路径**：会逐个审批则该路径降级为「让 Codex 去触发计划任务」。无人值守路径不受影响。在 Codex 里跑检测时数审批次数即可回答 |
 | `%USERPROFILE%\.codex\skills\` 在 Windows 版是否被扫描；中文 skill 名能否被 `$` 触发 | §8.1.1 / §8.1.2 | 第一次使用时 skill 找不到/打不出来 |
 | 目标机 `Get-ExecutionPolicy -List` 全作用域快照 | §8.4 | GPO 锁死时才发现，且 `-ExecutionPolicy Bypass` 无声失效 |
 | 重定向管道下 `-sccUTF-8` 是否影响 7z 输出编码 | §8.8.7 | 中日文条目名读成乱码 → D5/D6 在正常包上假失败 → 源包永远删不掉 |
@@ -8053,7 +8076,7 @@ pwsh -NoProfile -File D:\GameFlow\scripts\Invoke-Deliver.ps1 -BatchId 2026-01-01
 |---|---|---|---|---|
 | **1** | **目标机基础环境快照**：`7z.exe` 是否在 PATH、版本号、是否只有 WinRAR/Bandizip GUI；`$PSVersionTable`；`pwsh.exe` 是否存在；库所在卷的文件系统（NTFS/exFAT）；系统 ACP 与 Beta UTF-8 状态；`LongPathsEnabled`；`Get-ExecutionPolicy -List` 全作用域；枢纽根是否落在 OneDrive / `Program Files` 下 | 一个 `Preflight.ps1` 一次性输出 JSON。E3 只说"装了 7-Zip **或** WinRAR/Bandizip"，**没指明是哪个** | **后面每一节都建在沙上。** 版本决定 D-17 能不能满足；ACP 决定 D-05 走哪一支、D-20 的 GBK 换算是否成立；`LongPathsEnabled` 决定 MAX_PATH 预算；ExecutionPolicy 的 MachinePolicy/UserPolicy 决定 `-ExecutionPolicy Bypass` 有没有用；OneDrive 目录会导致 MTool inject 失败（`【社区】`） | §9（前置探测本身）、§2（MAX_PATH）、§5、§6、§8 |
 | **2** | **Codex 沙盒能否写 `D:\GameHub`**（project 打开 `D:\GameFlow` 时）；`sandbox_workspace_write.writable_roots` 的实际边界；`<writable_root>/.codex` 被递归置只读是否影响我们 | 配 `writable_roots` 后让 agent 往 `D:\GameHub\_reports\` 写一个文件；再试写 `games\<dirname>\.gameflow\` | Codex 侧第一步写文件就失败。要么整套 skill 权限模型重设计，要么被迫用 full access（**安全上不可接受**） | §8（Codex 操作面）、§2（双根部署） |
-| **3** | **`prefix_rule` 对 PowerShell 的拆分语义**：`codex execpolicy check` 怎么看待 `powershell.exe -NoProfile -Command "…"` | `codex execpolicy check --pretty --rules ~/.codex/rules/default.rules -- powershell.exe -NoProfile -Command "7z t x.7z"`；再对比 `-File` 形式 | 官方 rules 文档**全文零提及 powershell/pwsh/cmd.exe**（`【官方】`：grep 0 命中），极可能整条调用被当成单一 invocation → `pattern=["7z","t"]` 失效 → 每次解压都要人点一次。**注意：这不阻塞 A**（A 由 Windows 任务计划触发，不经审批面，D-10），但会显著劣化 B 的体感 | §8 |
+| **3** | **Codex 会不会对脚本内部起的子进程逐个审批**（原题「`prefix_rule` 对 PowerShell 的拆分语义」，测法已更正） | **原测法作废**：`codex execpolicy check` 连官方说会拆的 `bash -lc` 都不拆（2026-09-29 实测对照组），它的「未命中」不构成证据，见 §8.5.3。**新测法**：让 Codex 执行 `tests\windows\Invoke-WindowsCheck.ps1`，数审批弹窗次数、记下弹窗命令原文 | 官方 rules 文档**全文零提及 powershell/pwsh/cmd.exe**（`【官方】`：grep 0 命中），极可能整条调用被当成单一 invocation → `pattern=["7z","t"]` 失效 → 每次解压都要人点一次。**注意：这不阻塞 A**（A 由 Windows 任务计划触发，不经审批面，D-10），但会显著劣化 B 的体感 | §8 |
 | **4** | **浏览器扩展驱动已登录浏览器时，是否占用前台指针** | 装扩展后跑一个 `@Chrome` 任务，全程观察鼠标指针与焦点是否被接管 | **这条决定阶段一/阶段二的分界线画在哪。** 官方文档两面都有暗示、没有明确表态。若扩展路径不占前台，则"用已登录浏览器转存网盘"可以留在阶段一（不占主力机，E1 的痛点大幅缓解）；若占前台，它必须整段划进 C，M4 的会话模型也随之改变 | §1（两阶段定性）、§7（C 的会话模型）、§10.1（M4 范围） |
 | **5** | **加密包在 stdin 重定向自 `NUL` 时是否真的不挂起** | `7z t <加密包> <NUL`，看是否立即返回；`powershell.exe` 与 `pwsh.exe` 各一次 | macOS 上 `</dev/null` 得到 exit 255（`【实测】`），但 **Windows 的控制台密码读取可能走 `CONIN$` 而不是 stdin**，那样 `<NUL` 挡不住挂起。后台任务里挂死一个无输出的进程是**最难发现的故障模式**。（缓解已写进 §8.8：无论结论如何都必须设超时） | §6、§8 |
 | **6** | **`MpCmdRun -Scan -ScanType 3 -DisableRemediation` 的 stdout 格式**：威胁名怎么打印、多威胁怎么分行、无威胁时打什么 | 用 EICAR 样本跑一次，把完整 stdout 存档 | 该模式下 **stdout 是唯一的检出信号**——事件日志和 `Get-MpThreatDetection` 都看不到这次检出（`【官方】` https://learn.microsoft.com/en-us/defender-endpoint/command-line-arguments-microsoft-defender-antivirus ）。格式不确定就写不出解析器，A/B/C 三级分流（D-19）全部落空 | §6（Defender 预检）、§10.1（M3） |

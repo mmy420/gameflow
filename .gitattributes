@@ -7,3 +7,6 @@
 
 # fixture 是二进制样本，绝不可做行尾转换 —— 转了就不是同一个归档了
 tests/fixtures/** binary
+
+# Codex 规则文件（Starlark）
+*.rules text eol=lf
