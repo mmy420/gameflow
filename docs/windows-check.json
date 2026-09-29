@@ -1,0 +1,317 @@
+{
+    "schema_version":  2,
+    "generated_at":  "2026-09-29T16:41:05.2871651+00:00",
+    "completed":  true,
+    "in_progress":  null,
+    "host":  {
+                 "ps_version":  "5.1.26100.9444",
+                 "ps_edition":  "Desktop",
+                 "exe":  "powershell"
+             },
+    "params":  {
+                   "hub_root":  "D:\\GameHub",
+                   "sample_game_dirs":  [
+
+                                        ],
+                   "probe_hub_write":  true
+               },
+    "checks":  {
+                   "W1_preflight":  {
+                                        "exit_code":  3,
+                                        "stdout_tail":  [
+                                                            "JSON 快照 → C:\\Users\\21943\\AppData\\Local\\Temp\\gfwin-9d4d3eae\\preflight.json",
+                                                            "",
+                                                            "═══ GameFlow Preflight ═══════════════════════════════════════",
+                                                            "  机器      : KKSKMMY  (Microsoft Windows 11 Home)",
+                                                            "  PowerShell: 5.1.26100.9444    pwsh: 7.6.5",
+                                                            "  7-Zip     : (无)",
+                                                            "  枢纽根    : D:\\GameHub  [NTFS]  剩余 1355 GiB",
+                                                            "  ACP       : 936",
+                                                            "──────────────────────────────────────────────────────────────",
+                                                            "  [FAIL] PF-01  找不到 7z.exe。WinRAR/Bandizip 的 GUI 顶替不了——SPEC 的全部退出码判据都以 7-Zip 命令行为准（§6.2）。装 7-Zip 并把它加进 PATH",
+                                                            "  [PASS] PF-02  pwsh 7.6.5",
+                                                            "  [PASS] PF-06  ExecutionPolicy = Bypass",
+                                                            "  [PASS] PF-08  ACP = 936 (gb2312)。SPEC 不断言它必须是 936，只把它作为解释失败的上下文",
+                                                            "  [PASS] PF-03  枢纽卷 NTFS，剩余 1355 GiB",
+                                                            "  [WARN] PF-09  MpCmdRun 需提权运行（官方）。当前不是管理员——B 的计划任务要 -RunLevel Highest（§8.8.10）",
+                                                            "  [WARN] PF-26  未测量真实游戏包的最长内部路径（§11 #26）。重跑时加 -SampleGameDirs，这条决定目录名降级会不会频繁触发",
+                                                            "──────────────────────────────────────────────────────────────",
+                                                            "  PASS 4   WARN 2   FAIL 1",
+                                                            "",
+                                                            "  本脚本测不到、必须在 Codex 会话里做的：",
+                                                            "    . §11 #2  Codex 沙盒能否写 D:\\GameHub —— 由 tests\\windows\\Invoke-WindowsCheck.ps1 -ProbeHubWrite 的 W9 回答",
+                                                            "    . §11 #3  Codex 会不会对脚本内部子进程逐个审批 —— 在 Codex 里跑检测时数审批次数，见 docs\\WINDOWS-CHECK.md 第三部分",
+                                                            "══════════════════════════════════════════════════════════════"
+                                                        ],
+                                        "snapshot":  {
+                                                         "schema_version":  1,
+                                                         "generated_at":  "2026-09-29T16:41:05.6626728+00:00",
+                                                         "hub_root_arg":  "D:\\GameHub",
+                                                         "platform":  {
+                                                                          "is_windows":  true,
+                                                                          "caption":  "Microsoft Windows 11 Home",
+                                                                          "version":  "10.0.26200",
+                                                                          "build":  "26200",
+                                                                          "is_admin":  false,
+                                                                          "user_sid":  "S-1-5-21-1137860483-3042371502-1010147330-1001",
+                                                                          "machine":  "KKSKMMY"
+                                                                      },
+                                                         "archiver":  {
+                                                                          "sevenzip_path":  null,
+                                                                          "sevenzip_version":  null,
+                                                                          "meets_hard_floor":  false,
+                                                                          "meets_recommended":  false,
+                                                                          "handlers":  null,
+                                                                          "winrar_path":  null,
+                                                                          "rar_cli_path":  null,
+                                                                          "bandizip_path":  null
+                                                                      },
+                                                         "powershell":  {
+                                                                            "current_version":  "5.1.26100.9444",
+                                                                            "current_edition":  "Desktop",
+                                                                            "host_exe":  "powershell",
+                                                                            "pwsh_path":  "C:\\Users\\21943\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\native\\powershell\\pwsh.exe",
+                                                                            "pwsh_version":  "7.6.5",
+                                                                            "pwsh_meets_74":  true
+                                                                        },
+                                                         "execution_policy":  {
+                                                                                  "MachinePolicy":  "Undefined",
+                                                                                  "UserPolicy":  "Undefined",
+                                                                                  "Process":  "Bypass",
+                                                                                  "CurrentUser":  "Undefined",
+                                                                                  "LocalMachine":  "RemoteSigned",
+                                                                                  "effective":  "Bypass",
+                                                                                  "locked_by_gpo":  false
+                                                                              },
+                                                         "codepage":  {
+                                                                          "acp":  936,
+                                                                          "oemcp":  936,
+                                                                          "acp_name":  "gb2312",
+                                                                          "beta_utf8_on":  false,
+                                                                          "console_output":  "utf-8",
+                                                                          "ps_default_enc":  null
+                                                                      },
+                                                         "long_paths":  {
+                                                                            "registry_enabled":  false,
+                                                                            "note":  "SPEC 不依赖长路径；预算按 248 = MAX_PATH-12 算（§2.5）"
+                                                                        },
+                                                         "hub":  {
+                                                                     "path":  "D:\\GameHub",
+                                                                     "exists":  true,
+                                                                     "volume_root":  "D:\\",
+                                                                     "filesystem":  "NTFS",
+                                                                     "is_ntfs":  true,
+                                                                     "free_bytes":  1454930382848,
+                                                                     "total_bytes":  2000381014016,
+                                                                     "free_gib":  1355,
+                                                                     "under_onedrive":  false,
+                                                                     "under_programfiles":  false,
+                                                                     "root_name_length":  10,
+                                                                     "games_prefix_len":  17
+                                                                 },
+                                                         "defender":  {
+                                                                          "mpcmdrun_path":  "C:\\ProgramData\\Microsoft\\Windows Defender\\Platform\\4.18.26050.15-0\\MpCmdRun.exe",
+                                                                          "status":  {
+                                                                                         "realtime_enabled":  false,
+                                                                                         "antivirus_enabled":  false,
+                                                                                         "engine_version":  "0.0.0.0"
+                                                                                     },
+                                                                          "exclusion_paths":  null,
+                                                                          "stg_excluded":  false,
+                                                                          "note":  "MpCmdRun 需提权运行（官方）；B 的计划任务要 -RunLevel Highest（§8.8.10）"
+                                                                      },
+                                                         "codex":  {
+                                                                       "cli_path":  "C:\\Users\\21943\\AppData\\Local\\OpenAI\\Codex\\bin\\faa963e871dd422c\\codex.exe",
+                                                                       "codex_home":  "C:\\Users\\21943\\.codex",
+                                                                       "config_exists":  true,
+                                                                       "note":  "§11 #2/#3 必须在 Codex 会话内实测，本脚本测不到（见输出末尾的待办）"
+                                                                   },
+                                                         "mtool":  {
+                                                                       "found":  [
+
+                                                                                 ],
+                                                                       "signatures":  [
+
+                                                                                      ],
+                                                                       "note":  "签名状态决定 computer_use.windows.exes 规则能不能写（§11 #14）"
+                                                                   },
+                                                         "internal_paths":  {
+                                                                                "measured":  false,
+                                                                                "reason":  "未提供 -SampleGameDirs"
+                                                                            },
+                                                         "findings":  [
+                                                                          {
+                                                                              "level":  "FAIL",
+                                                                              "id":  "PF-01",
+                                                                              "text":  "找不到 7z.exe。WinRAR/Bandizip 的 GUI 顶替不了——SPEC 的全部退出码判据都以 7-Zip 命令行为准（§6.2）。装 7-Zip 并把它加进 PATH"
+                                                                          },
+                                                                          {
+                                                                              "level":  "PASS",
+                                                                              "id":  "PF-02",
+                                                                              "text":  "pwsh 7.6.5"
+                                                                          },
+                                                                          {
+                                                                              "level":  "PASS",
+                                                                              "id":  "PF-06",
+                                                                              "text":  "ExecutionPolicy = Bypass"
+                                                                          },
+                                                                          {
+                                                                              "level":  "PASS",
+                                                                              "id":  "PF-08",
+                                                                              "text":  "ACP = 936 (gb2312)。SPEC 不断言它必须是 936，只把它作为解释失败的上下文"
+                                                                          },
+                                                                          {
+                                                                              "level":  "PASS",
+                                                                              "id":  "PF-03",
+                                                                              "text":  "枢纽卷 NTFS，剩余 1355 GiB"
+                                                                          },
+                                                                          {
+                                                                              "level":  "WARN",
+                                                                              "id":  "PF-09",
+                                                                              "text":  "MpCmdRun 需提权运行（官方）。当前不是管理员——B 的计划任务要 -RunLevel Highest（§8.8.10）"
+                                                                          },
+                                                                          {
+                                                                              "level":  "WARN",
+                                                                              "id":  "PF-26",
+                                                                              "text":  "未测量真实游戏包的最长内部路径（§11 #26）。重跑时加 -SampleGameDirs，这条决定目录名降级会不会频繁触发"
+                                                                          }
+                                                                      ],
+                                                         "summary":  {
+                                                                         "pass":  4,
+                                                                         "warn":  2,
+                                                                         "fail":  1
+                                                                     },
+                                                         "manual_todo":  [
+                                                                             "§11 #2  Codex 沙盒能否写 D:\\GameHub —— 由 tests\\windows\\Invoke-WindowsCheck.ps1 -ProbeHubWrite 的 W9 回答",
+                                                                             "§11 #3  Codex 会不会对脚本内部子进程逐个审批 —— 在 Codex 里跑检测时数审批次数，见 docs\\WINDOWS-CHECK.md 第三部分"
+                                                                         ]
+                                                     }
+                                    },
+                   "W2_unit_tests":  {
+                                         "powershell":  {
+                                                            "present":  true,
+                                                            "exit_code":  0,
+                                                            "summary":  [
+                                                                            "  22 项：PASS 22   FAIL 0",
+                                                                            "  9 项：PASS 9   FAIL 0",
+                                                                            "  43 项：PASS 43   FAIL 0",
+                                                                            "  20 项：PASS 20   FAIL 0"
+                                                                        ],
+                                                            "details":  [
+                                                                            "── Journal.ps1 ───────────────────────────────────────────────",
+                                                                            "  22 项：PASS 22   FAIL 0",
+                                                                            "── Lock.ps1 ──────────────────────────────────────────────────",
+                                                                            "  9 项：PASS 9   FAIL 0",
+                                                                            "── Paths.ps1 ─────────────────────────────────────────────────",
+                                                                            "  43 项：PASS 43   FAIL 0",
+                                                                            "── SevenZip.ps1 ──────────────────────────────────────────────",
+                                                                            "  20 项：PASS 20   FAIL 0",
+                                                                            "全部 4 个测试文件通过"
+                                                                        ]
+                                                        },
+                                         "pwsh":  {
+                                                      "present":  true,
+                                                      "exit_code":  0,
+                                                      "summary":  [
+                                                                      "  22 项：PASS 22   FAIL 0",
+                                                                      "  9 项：PASS 9   FAIL 0",
+                                                                      "  43 项：PASS 43   FAIL 0",
+                                                                      "  20 项：PASS 20   FAIL 0"
+                                                                  ],
+                                                      "details":  [
+                                                                      "── Journal.ps1 ───────────────────────────────────────────────",
+                                                                      "  22 项：PASS 22   FAIL 0",
+                                                                      "── Lock.ps1 ──────────────────────────────────────────────────",
+                                                                      "  9 项：PASS 9   FAIL 0",
+                                                                      "── Paths.ps1 ─────────────────────────────────────────────────",
+                                                                      "  43 项：PASS 43   FAIL 0",
+                                                                      "── SevenZip.ps1 ──────────────────────────────────────────────",
+                                                                      "  20 项：PASS 20   FAIL 0",
+                                                                      "全部 4 个测试文件通过"
+                                                                  ]
+                                                  }
+                                     },
+                   "W3_cross_process_lock":  {
+                                                 "holder_acquired":  true,
+                                                 "holder_wait_seconds":  0.4,
+                                                 "blocked_while_held":  true,
+                                                 "free_after_release":  true,
+                                                 "holder_exit":  0,
+                                                 "verdict":  "PASS",
+                                                 "note":  "INCONCLUSIVE ≠ FAIL：持锁方没拿到锁，本轮没测到互斥。在普通终端重跑"
+                                             },
+                   "W4_encrypted_stdin":  {
+                                              "skipped":  "无 7z"
+                                          },
+                   "W5_sjis_zip":  {
+                                       "skipped":  "无 7z"
+                                   },
+                   "W6_traversal":  {
+                                        "skipped":  "无 7z"
+                                    },
+                   "W7_motw":  {
+                                   "skipped":  "无 7z"
+                               },
+                   "W8_long_path":  {
+                                        "target_length":  335,
+                                        "created":  true,
+                                        "error":  null,
+                                        "note":  "SPEC 的姿态是「从源头压短路径」，本项不阻塞，只是确认代价"
+                                    },
+                   "W9_hub_write":  {
+                                        "hub_root":  "D:\\GameHub",
+                                        "wrote":  true,
+                                        "removed":  true,
+                                        "error":  null,
+                                        "note":  "在 Codex 里跑时，这一格就是 §11 #2 的答案"
+                                    }
+               },
+    "context":  {
+                    "user":  "21943",
+                    "machine":  "KKSKMMY",
+                    "codex_env":  [
+                                      {
+                                          "name":  "CODEX_APP_TOOLS_PIPE_PATH"
+                                      },
+                                      {
+                                          "name":  "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS"
+                                      },
+                                      {
+                                          "name":  "CODEX_CI"
+                                      },
+                                      {
+                                          "name":  "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+                                      },
+                                      {
+                                          "name":  "CODEX_MCP_NODE_PATH"
+                                      },
+                                      {
+                                          "name":  "CODEX_PERMISSION_PROFILE"
+                                      },
+                                      {
+                                          "name":  "CODEX_SAGE_BACKFILL_TRACKER_TAB_REUSE"
+                                      },
+                                      {
+                                          "name":  "CODEX_SESSION_ID"
+                                      },
+                                      {
+                                          "name":  "CODEX_SHELL"
+                                      },
+                                      {
+                                          "name":  "CODEX_TECTONIC_PATH"
+                                      },
+                                      {
+                                          "name":  "CODEX_THREAD_ID"
+                                      },
+                                      {
+                                          "name":  "CODEX_VERSION"
+                                      },
+                                      {
+                                          "name":  "CODEX_WINDOWS_SANDBOX_PACKAGE_FAMILY",
+                                          "value":  "OpenAI.Codex_2p2nqsd0c76g0"
+                                      }
+                                  ],
+                    "temp_writable":  true,
+                    "likely_under_codex":  true
+                }
+}
